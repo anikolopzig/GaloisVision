@@ -77,9 +77,10 @@ type Props = {
   onChange: (patch: Partial<Settings>) => void;
   onLayout: (mode: LayoutMode) => void;
   onSeparate: (sweeps: number) => void;
+  onSearch: () => void;
 };
 
-export function Controls({ settings, onChange, onLayout, onSeparate }: Props) {
+export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }: Props) {
   const s = settings;
   return (
     <div className="card pack-controls">
@@ -162,12 +163,31 @@ export function Controls({ settings, onChange, onLayout, onSeparate }: Props) {
         <button className="btn" onClick={() => onSeparate(200)}>
           Settle
         </button>
+        <button className="btn" onClick={onSearch}>
+          WalkSAT
+        </button>
       </div>
+      <NumberField
+        label="WalkSAT noise p"
+        value={settings.noise}
+        min={0}
+        max={1}
+        step={0.01}
+        decimals={2}
+        hint={settings.noise === 0 ? "pure greedy" : undefined}
+        onChange={(v) => onChange({ noise: v })}
+      />
       <p className="section-note">
         Separating nudges every overlapping pair apart along the line of centres; <em>Settle</em> runs two hundred of
-        those sweeps, enough to reach an exactly tangent packing. In a crowd with no room the number of
-        pairs can go <em>up</em> while the shared area falls — a few deep overlaps become many shallow ones. Drag any
-        ball in the picture to move it by hand.
+        those sweeps, enough to reach an exactly tangent packing. In a crowd with no room the number of pairs can go{" "}
+        <em>up</em> while the shared area falls — a few deep overlaps become many shallow ones. Drag any ball in the
+        picture to move it by hand.
+      </p>
+      <p className="section-note">
+        <em>WalkSAT</em> treats each pair as a constraint "these two are at least 2r apart" and searches: pick a pair
+        that is violated, then with probability p move one of them clear in a random direction, otherwise in the
+        direction that leaves the fewest other pairs overlapping. Settling only ever moves downhill and jams; the random
+        moves are what get it out. Too much noise is as bad as none — try p = 0 and p = 0.5 against the default.
       </p>
 
       <h3 style={{ marginTop: 18 }}>Show</h3>

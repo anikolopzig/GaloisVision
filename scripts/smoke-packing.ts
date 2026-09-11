@@ -20,6 +20,7 @@ import {
   relax,
   scatterLayout,
   totalOverlapArea,
+  walkSat,
   wrap,
   type Ball,
   type Domain,
@@ -259,6 +260,89 @@ check(
   for (let i = 0; i < 400; i++) balls = relax(pack(balls, 0.12, d), 0.6, () => 0.5);
   check("torus relaxation separates across the seam", contacts(pack(balls, 0.12, d)).length === 0);
   check("torus relaxation keeps centres wrapped", balls.every((b) => b.x >= 0 && b.x < 1));
+}
+
+// ---- walk-sat search ----
+{
+  const d = dom(0.1, { confine: true });
+  const balls = randomLayout(12, d, lcg(3));
+  const a = walkSat({ balls, ...d }, lcg(11));
+  const b = walkSat({ balls, ...d }, lcg(11));
+  check("walkSat is deterministic for a given rng", JSON.stringify(a.balls) === JSON.stringify(b.balls));
+  check("walkSat returns every ball", a.balls.length === 12);
+  check("walkSat respects the walls", a.balls.every((p) => p.x >= 0.1 - 1e-9 && p.x <= 0.9 + 1e-9));
+  check("walkSat solves an easy crowd", a.solved, `${a.violations} left`);
+  check("walkSat stops as soon as it is done", a.steps < 3000);
+  check("walkSat reports the arrangement it started from", a.initialViolations === contacts({ balls, ...d }).length);
+}
+{
+  // The reported count must describe the arrangement actually returned — the
+  // search keeps a best-so-far, so the two could drift apart.
+  const d = dom(0.14, { confine: true });
+  const r = walkSat({ balls: randomLayout(12, d, lcg(5)), ...d }, lcg(23));
+  check("walkSat's violation count matches its returned arrangement", contacts({ balls: r.balls, ...d }).length === r.violations, `said ${r.violations}, actually ${contacts({ balls: r.balls, ...d }).length}`);
+  check("walkSat never claims to have solved an arrangement that overlaps", !r.solved || contacts({ balls: r.balls, ...d }).length === 0);
+}
+{
+  // Nothing to satisfy: no pairs, so it is done before it starts.
+  const d = dom(0.3);
+  const r = walkSat({ balls: [{ x: 0.5, y: 0.5 }], ...d }, lcg(1));
+  check("walkSat on a single ball is trivially solved", r.solved && r.steps === 0);
+}
+{
+  // A ball meeting its own wrapped image is not a pair constraint and no move
+  // fixes it, so the search reports no violations while the picture stays red.
+  const d = dom(0.6, { geometry: "torus" });
+  const r = walkSat({ balls: [{ x: 0.5, y: 0.5 }], ...d }, lcg(1));
+  check("walkSat ignores self-overlap, which it cannot fix", r.solved);
+  check("...even though the ball really does overlap itself", contacts({ balls: r.balls, ...d }).length > 0);
+}
+{
+  // Across the seam, and centres come back wrapped.
+  const d = dom(0.12, { geometry: "torus" });
+  const r = walkSat({ balls: randomLayout(10, d, lcg(9)), ...d }, lcg(31));
+  check("walkSat solves on the torus", r.solved, `${r.violations} left`);
+  check("walkSat keeps torus centres wrapped", r.balls.every((p) => p.x >= 0 && p.x < 1 && p.y >= 0 && p.y < 1));
+}
+{
+  // The headline claim: on a hard but feasible instance — 16 balls at 96% of
+  // the radius a 4x4 grid allows — the search finds packings that downhill-only
+  // relaxation cannot, and the noise is what makes the difference.
+  const trials = 8;
+  const d = dom(0.12, { confine: true });
+  let relaxed = 0;
+  let greedy = 0;
+  let walked = 0;
+  for (let t = 0; t < trials; t++) {
+    const start = randomLayout(16, d, lcg(900 + t * 211));
+    let b = start.map((x) => ({ ...x }));
+    const rngR = lcg(77 + t);
+    for (let i = 0; i < 1500; i++) b = relax({ balls: b, ...d }, 0.6, rngR);
+    if (contacts({ balls: b, ...d }).length === 0) relaxed++;
+    if (walkSat({ balls: start, ...d }, lcg(55 + t), { noise: 0 }).solved) greedy++;
+    if (walkSat({ balls: start, ...d }, lcg(55 + t), { noise: 0.15 }).solved) walked++;
+  }
+  check("walkSat beats relaxation on a hard feasible instance", walked > relaxed, `walkSat ${walked}/${trials} vs relax ${relaxed}/${trials}`);
+  check("walkSat's noise beats pure greedy descent", walked > greedy, `p=0.15 ${walked}/${trials} vs p=0 ${greedy}/${trials}`);
+  check("walkSat solves most of them", walked >= trials - 1, `${walked}/${trials}`);
+}
+{
+  // With no solution at all, it still hands back the best it passed through.
+  const trials = 6;
+  const d = dom(0.14, { confine: true }); // 12 balls this size cannot fit
+  let wsPairs = 0;
+  let relaxPairs = 0;
+  for (let t = 0; t < trials; t++) {
+    const start = randomLayout(12, d, lcg(400 + t * 37));
+    const r = walkSat({ balls: start, ...d }, lcg(88 + t));
+    check(`walkSat never returns worse than it was given (trial ${t})`, r.violations <= r.initialViolations, `${r.initialViolations} -> ${r.violations}`);
+    wsPairs += r.violations;
+    let b = start.map((x) => ({ ...x }));
+    const rngR = lcg(66 + t);
+    for (let i = 0; i < 1500; i++) b = relax({ balls: b, ...d }, 0.6, rngR);
+    relaxPairs += contacts({ balls: b, ...d }).length;
+  }
+  check("walkSat leaves far less overlap than relaxation when nothing fits", wsPairs * 2 < relaxPairs, `walkSat ${wsPairs} vs relax ${relaxPairs} pairs over ${trials} trials`);
 }
 
 // ---- pigeonhole ----

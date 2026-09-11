@@ -14,6 +14,8 @@ export type Settings = {
   showGhosts: boolean;
   showLabels: boolean;
   showPigeonhole: boolean;
+  /** WalkSAT's noise p: chance of clearing a conflicting pair in a random direction rather than the best one. */
+  noise: number;
   /** Track the finest grid the argument applies to (k² < n) instead of a fixed k. */
   autoK: boolean;
   k: number;
@@ -37,6 +39,7 @@ export const DEFAULTS: Settings = {
   showGhosts: true,
   showLabels: true,
   showPigeonhole: true,
+  noise: 0.15,
   autoK: true,
   k: 1,
 };

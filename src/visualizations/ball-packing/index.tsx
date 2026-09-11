@@ -15,6 +15,7 @@ import {
   relax,
   scatterLayout,
   totalOverlapArea,
+  walkSat,
   type Ball,
   type Domain,
   type LayoutMode,
@@ -48,7 +49,7 @@ export function BallPackingVisualization() {
   const [balls, setBalls] = useState<Ball[]>(() => gridLayout(DEFAULTS.n, domainOf(DEFAULTS)));
   const [selected, setSelected] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
-  const [scatterNote, setScatterNote] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
   const domain = domainOf(settings);
   const packing: Packing = { balls, ...domain };
@@ -97,7 +98,7 @@ export function BallPackingVisualization() {
       return bs.map((b) => normalizeCentre(b, d));
     });
     if (patch.n !== undefined && selected !== null && selected >= patch.n) setSelected(null);
-    setScatterNote(null);
+    setActionNote(null);
   }
 
   function applyLayout(mode: LayoutMode) {
@@ -105,14 +106,14 @@ export function BallPackingVisualization() {
     if (mode === "scatter") {
       const { balls: bs, placed } = scatterLayout(settings.n, d, Math.random);
       setBalls(bs);
-      setScatterNote(
+      setActionNote(
         placed < settings.n
           ? `Random search placed ${placed} of ${settings.n} balls without overlap before giving up. Strong evidence that this radius is too big — but only the pigeonhole bound below actually proves it.`
           : null,
       );
       return;
     }
-    setScatterNote(null);
+    setActionNote(null);
     setBalls(
       mode === "hex"
         ? hexLayout(settings.n, d)
@@ -122,8 +123,28 @@ export function BallPackingVisualization() {
     );
   }
 
+  function search() {
+    const d = domainOf(settings);
+    const r = walkSat({ balls, ...d }, Math.random, { noise: settings.noise });
+    setBalls(r.balls);
+    if (r.solved) {
+      setActionNote(
+        r.initialViolations === 0
+          ? `WalkSAT had nothing to fix — no pair was overlapping to begin with.`
+          : `WalkSAT cleared all ${plural(r.initialViolations, "overlapping pair")} in ${plural(r.steps, "step")}.`,
+      );
+    } else {
+      setActionNote(
+        `WalkSAT ran ${plural(r.steps, "step")} and got from ${r.initialViolations} to ${plural(r.violations, "overlapping pair")} — the best arrangement it passed through. ` +
+          (report.forcedOverlap
+            ? `Zero is out of reach here: pigeonhole forces an overlap at this radius.`
+            : `Run it again, or try a different noise p — the search is randomised, so a second run explores elsewhere.`),
+      );
+    }
+  }
+
   function separate(sweeps: number) {
-    setScatterNote(null);
+    setActionNote(null);
     const d = domainOf(settings);
     setBalls((prev) => {
       let bs = prev;
@@ -138,7 +159,7 @@ export function BallPackingVisualization() {
     setBalls(seed(p, domainOf(next)));
     setSelected(null);
     setHovered(null);
-    setScatterNote(p.note);
+    setActionNote(p.note);
   }
 
   function moveBall(i: number, x: number, y: number) {
@@ -244,7 +265,7 @@ export function BallPackingVisualization() {
               <em>Separate</em> or <em>Scatter</em>, or drag the balls apart by hand.
             </div>
           )}
-          {scatterNote && <div className="msg msg-info">{scatterNote}</div>}
+          {actionNote && <div className="msg msg-info">{actionNote}</div>}
 
           <div className="facts">
             <div className="fact">
@@ -283,7 +304,13 @@ export function BallPackingVisualization() {
             centre distance: the biggest r these particular centres could carry.
           </p>
 
-          <Controls settings={settings} onChange={update} onLayout={applyLayout} onSeparate={separate} />
+          <Controls
+            settings={settings}
+            onChange={update}
+            onLayout={applyLayout}
+            onSeparate={separate}
+            onSearch={search}
+          />
 
           <div className="card" style={{ marginTop: 18 }}>
             <h3 style={{ marginTop: 0 }}>Balls</h3>

@@ -331,6 +331,210 @@ export function relax(p: Packing, rate = 0.6, rng: () => number = Math.random): 
   return moved;
 }
 
+// -------------------------------------------------------------- walk-sat ----
+
+export type WalkSatResult = {
+  balls: Ball[];
+  /** Overlapping pairs in the arrangement returned. Self-overlap is excluded — no move fixes it. */
+  violations: number;
+  /** Overlapping pairs in the arrangement it was handed, so a caller can say what the search bought. */
+  initialViolations: number;
+  /** Steps taken; fewer than asked for when an overlap-free arrangement turned up early. */
+  steps: number;
+  /** No pair of distinct balls overlaps. On the torus a ball may still meet its own image. */
+  solved: boolean;
+};
+
+export type WalkSatOptions = {
+  steps?: number;
+  /** Probability of taking the random move instead of the greedy one. */
+  noise?: number;
+  /** Positions tried per ball when moving greedily. */
+  candidates?: number;
+};
+
+/**
+ * WalkSAT, adapted from boolean satisfiability to disc packing.
+ *
+ * The correspondence: the *variables* are the centres (continuous here, not
+ * boolean), and the *clauses* are the C(n,2) separation constraints
+ * `dist(i, j) ≥ 2r`, one per pair. A violated clause is an overlapping pair.
+ *
+ * Each step follows WalkSAT's shape exactly:
+ *   1. pick a violated clause uniformly at random — so effort goes where the
+ *      arrangement is actually broken, never to balls that are already happy;
+ *   2. with probability `noise`, move one of that pair's two balls somewhere
+ *      random (the random walk);
+ *   3. otherwise move whichever of the two balls, to whichever candidate spot,
+ *      leaves the fewest violated clauses — ties broken by total
+ *      interpenetration, which keeps the greedy step from stalling on the many
+ *      candidates that tie on a bare count (the greedy descent).
+ *
+ * The noise is the whole point, and it is what `relax` lacks: relaxation only
+ * ever moves downhill, so it settles into the first local minimum it reaches
+ * and stays wedged there. A random move can push a ball clear out of a jam and
+ * let the arrangement re-form somewhere better.
+ *
+ * The best arrangement seen is kept and returned, so on an instance with no
+ * solution at all — a radius past the pigeonhole threshold, say — you still get
+ * the best arrangement the search passed through rather than wherever it
+ * happened to stop. That is WalkSAT's usual MAX-SAT behaviour.
+ */
+export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkSatOptions = {}): WalkSatResult {
+  const steps = Math.max(0, opts.steps ?? 3000);
+  const noise = Math.min(1, Math.max(0, opts.noise ?? 0.15));
+  const candidates = Math.max(2, opts.candidates ?? 16);
+  const { side, radius, geometry } = p;
+  const n = p.balls.length;
+
+  const balls = p.balls.map((b) => normalizeCentre(b, p));
+  const slack = 2 * radius * TOUCH_TOL;
+
+  // Pair state, kept incrementally: only the i < j half is ever written, so a
+  // move costs one row update rather than a rescan of every pair.
+  const depth = new Float64Array(n * n); // interpenetration per pair, 0 when clear
+  let violations = 0;
+  let totalDepth = 0;
+
+  /** How deep two centres interpenetrate; ≤ 0 when they are clear of each other. */
+  const gap = (a: Ball, b: Ball) => 2 * radius - distance(a, b, side, geometry);
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const g = gap(balls[i], balls[j]);
+      if (g > slack) {
+        depth[i * n + j] = g;
+        totalDepth += g;
+        violations++;
+      }
+    }
+  }
+  const initialViolations = violations;
+
+  const bounds = geometry === "torus" ? { lo: 0, hi: side } : centreBounds(p);
+  const span = Math.max(0, bounds.hi - bounds.lo);
+
+  /** What moving ball `b` to `pos` would cost: clauses left violated, and by how much. */
+  function costAt(b: number, pos: Ball): { count: number; depth: number } {
+    let count = 0;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j === b) continue;
+      const g = gap(pos, balls[j]);
+      if (g > slack) {
+        count++;
+        sum += g;
+      }
+    }
+    return { count, depth: sum };
+  }
+
+  function moveTo(b: number, pos: Ball) {
+    balls[b] = pos;
+    for (let j = 0; j < n; j++) {
+      if (j === b) continue;
+      const k = b < j ? b * n + j : j * n + b;
+      const was = depth[k];
+      const g = gap(pos, balls[j]);
+      const now = g > slack ? g : 0;
+      depth[k] = now;
+      totalDepth += now - was;
+      if (now > 0 && was === 0) violations++;
+      else if (now === 0 && was > 0) violations--;
+    }
+  }
+
+  /**
+   * A spot for ball `b` that clears `partner`: on the circle of radius 2r about
+   * the partner, at `angle`. Every move the search makes satisfies the clause it
+   * picked — which is what WalkSAT's variable flips do — and the question is only
+   * which direction to leave in.
+   */
+  function repairAt(partner: number, angle: number): Ball {
+    const clear = 2 * radius * (1 + 1e-9);
+    return normalizeCentre(
+      { x: balls[partner].x + Math.cos(angle) * clear, y: balls[partner].y + Math.sin(angle) * clear },
+      p,
+    );
+  }
+
+  /** The cheapest direction to leave in: straight out along the current line of centres. */
+  function escapeAngle(b: number, partner: number): number {
+    const sep = separation(balls[partner], balls[b], side, geometry);
+    return sep.dist < 1e-9 ? rng() * Math.PI * 2 : Math.atan2(sep.dy, sep.dx);
+  }
+
+  let best = balls.map((b) => ({ x: b.x, y: b.y }));
+  let bestViolations = violations;
+  let bestDepth = totalDepth;
+  let taken = 0;
+
+  for (let step = 0; step < steps && violations > 0; step++) {
+    taken = step + 1;
+
+    // Pick a violated clause uniformly at random. Reservoir sampling over the
+    // pair table avoids rebuilding a list of every conflict each step.
+    let picked = -1;
+    let seen = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (depth[i * n + j] > 0) {
+          seen++;
+          if (rng() * seen < 1) picked = i * n + j;
+        }
+      }
+    }
+    if (picked < 0) break;
+    const i = Math.floor(picked / n);
+    const j = picked % n;
+
+    if (rng() < noise) {
+      // The random walk: clear the pair in a direction chosen blindly.
+      const b = rng() < 0.5 ? i : j;
+      moveTo(b, repairAt(b === i ? j : i, rng() * Math.PI * 2));
+    } else {
+      // The greedy descent: of the two balls and the directions on offer, take
+      // whichever leaves the fewest clauses violated. Ties go to the shallower
+      // total interpenetration, without which the many candidates that tie on a
+      // bare count would make the step a coin flip.
+      let choice: { b: number; pos: Ball; count: number; depth: number } | null = null;
+      for (const b of [i, j]) {
+        const partner = b === i ? j : i;
+        for (let c = 0; c < candidates; c++) {
+          const pos =
+            c === 0
+              ? repairAt(partner, escapeAngle(b, partner)) // the smallest move that works
+              : c === 1
+                ? normalizeCentre(
+                    { x: bounds.lo + rng() * span, y: bounds.lo + rng() * span },
+                    p,
+                  ) // one wildcard, in case this ball belongs somewhere else entirely
+                : repairAt(partner, rng() * Math.PI * 2);
+          const cost = costAt(b, pos);
+          if (!choice || cost.count < choice.count || (cost.count === choice.count && cost.depth < choice.depth)) {
+            choice = { b, pos, count: cost.count, depth: cost.depth };
+          }
+        }
+      }
+      if (choice) moveTo(choice.b, choice.pos);
+    }
+
+    if (violations < bestViolations || (violations === bestViolations && totalDepth < bestDepth)) {
+      bestViolations = violations;
+      bestDepth = totalDepth;
+      best = balls.map((b) => ({ x: b.x, y: b.y }));
+    }
+  }
+
+  return {
+    balls: best,
+    violations: bestViolations,
+    initialViolations,
+    steps: taken,
+    solved: bestViolations === 0,
+  };
+}
+
 // ------------------------------------------------------------ pigeonhole ----
 
 export type PigeonholeReport = {
