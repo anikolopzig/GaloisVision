@@ -1,6 +1,5 @@
 {
   "hosting": {
-    "site": "galoisvision",
     "public": "dist",
     "ignore": [
       "firebase.json",
