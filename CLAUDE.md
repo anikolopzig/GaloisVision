@@ -15,6 +15,8 @@ npm run lint       # ESLint (flat config)
 # Tests are hand-rolled smoke scripts run directly with tsx — there is no test runner:
 npx tsx scripts/smoke.ts            # Galois group computation (assertions + exit code)
 npx tsx scripts/smoke-lattice.ts    # lattice math (assertions + exit code)
+npx tsx scripts/smoke-svp-cvp.ts    # Gauss reduction / Babai rounding (assertions + exit code)
+npx tsx scripts/smoke-packing.ts    # ball packing + pigeonhole bound (assertions + exit code)
 ```
 
 To exercise the math layer without the UI, write a throwaway `tsx` script importing from `src/math/*` — that is the fastest way to validate computational changes. Each smoke script prints `PASS/FAIL` lines and exits non-zero on failure.
@@ -26,7 +28,7 @@ Note: Node 20.17 prints a "Vite requires 20.19+" warning that is harmless; build
 **Registry-driven visualizations.** `src/visualizations/registry.tsx` is the single source of truth. Each entry is `{ id, title, description, status, Component? }`. The home page (`src/pages/Home.tsx`) renders cards from this list and the router (`src/App.tsx`) serves ready ones at `/v/:id`. **Adding a visualization = create a component folder under `src/visualizations/<name>/` and append one registry entry.** `status: "planned"` entries show as disabled cards with no route. Do not wire routes manually.
 
 **Two-layer split — pure math vs. presentation:**
-- `src/math/` is framework-free TypeScript. It exports exact, well-tested primitives and never imports React. The base layer is `rational.ts` (exact `Rational = {n, d}` backed by `BigInt`); everything is built on it so discriminants, determinants, covolumes, and square tests are exact with no floating-point drift. `parser.ts` → `polynomial.ts` → `galoisGroup.ts`/`groups.ts`/`quadField.ts` form the Galois pipeline; `lattice.ts` is the lattice-analysis layer; `notation.ts` holds shared sub/superscript label helpers. Floats are derived (`toNumber`) only at the last moment for plotting.
+- `src/math/` is framework-free TypeScript. It exports exact, well-tested primitives and never imports React. The base layer is `rational.ts` (exact `Rational = {n, d}` backed by `BigInt`); everything is built on it so discriminants, determinants, covolumes, and square tests are exact with no floating-point drift. `parser.ts` → `polynomial.ts` → `galoisGroup.ts`/`groups.ts`/`quadField.ts` form the Galois pipeline; `lattice.ts` is the lattice-analysis layer; `notation.ts` holds shared sub/superscript label helpers. Floats are derived (`toNumber`) only at the last moment for plotting. The one deliberate exception is `packing.ts`, which works in floating point throughout: circle-circle lens areas and the pigeonhole bound √2·L/k are transcendental, so there is no exact rational model to preserve. It is still framework-free, and it exports `TOUCH_TOL` because tangency — two disks exactly 2r apart — is the case that matters there and a bare `d < 2r` test would call a settled packing overlapping forever.
 - `src/visualizations/<name>/` holds the React/SVG presentation. `index.tsx` exports the top-level component named in the registry, owns input/parse/analyze state (heavy computation wrapped in `useMemo`), and composes smaller input/plot components.
 
 **Rendering is hand-rolled SVG — there are no charting or 3D libraries.** Plots compute their own geometry and project to SVG (e.g. `lattice/LatticePlot3D.tsx` does its own orthographic 3D projection with pointer-drag rotation). View resets are done by changing a React `key` to remount, not by effects.

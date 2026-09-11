@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import { GaloisGroupVisualization } from "./galois-group";
 import { LatticeVisualization } from "./lattice";
 import { SvpCvpVisualization } from "./svp-cvp";
+import { BallPackingVisualization } from "./ball-packing";
 
 export type Visualization = {
   id: string;            // URL slug, e.g. "galois-group"
@@ -38,6 +39,14 @@ export const visualizations: Visualization[] = [
       "Step through Gauss–Lagrange reduction to find the shortest vector of a 2-D lattice, and use Babai rounding to find the closest lattice point to a target in 2-D or 3-D.",
     status: "ready",
     Component: SvpCvpVisualization,
+  },
+  {
+    id: "ball-packing",
+    title: "Balls in a square, and on a torus",
+    description:
+      "Drop n balls of radius r on a square or on the flat torus, see exactly which area each ball owns and which area they are forced to share, and watch the pigeonhole principle decide when overlap is unavoidable.",
+    status: "ready",
+    Component: BallPackingVisualization,
   },
   {
     id: "ideal-lattice",
