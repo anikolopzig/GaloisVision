@@ -25,3 +25,6 @@ RESUME_NOTES.md
 *.njsproj
 *.sln
 *.sw?
+
+# Firebase deploy cache
+.firebase/
