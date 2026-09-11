@@ -34,9 +34,13 @@ GroupVote account.
 
 ## Where do I run these commands?
 
-In a **terminal on your own computer** — the same one you use for GroupVote (Terminal on
-macOS/Linux, or WSL / Git Bash on Windows; not the Windows `cmd` prompt). Not in the
-Firebase website, and not in a browser.
+In a **terminal on your own computer** — not in the Firebase website, and not in a
+browser. Any of these work: Command Prompt (`cmd`) or PowerShell on Windows, Terminal on
+macOS/Linux, or WSL / Git Bash.
+
+Every command in this guide is cross-platform and can be typed as written. The one
+exception is inspecting a file: `cat firebase.json` on macOS/Linux is `type firebase.json`
+in Windows `cmd`.
 
 Every command below except `firebase projects:create` must be run **from inside the
 GaloisVision folder**. `firebase use`, `npm install` and `npm run deploy` all read
@@ -68,7 +72,7 @@ git checkout claude/quirky-johnson-21e5e3
 config, not "No such file":
 
 ```bash
-cat firebase.json
+cat firebase.json      # Windows cmd: type firebase.json
 ```
 
 Another useful check at any point: `firebase use` on its own prints the currently active
