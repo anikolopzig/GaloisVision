@@ -32,6 +32,51 @@ GroupVote account.
 
 ---
 
+## Where do I run these commands?
+
+In a **terminal on your own computer** — the same one you use for GroupVote (Terminal on
+macOS/Linux, or WSL / Git Bash on Windows; not the Windows `cmd` prompt). Not in the
+Firebase website, and not in a browser.
+
+Every command below except `firebase projects:create` must be run **from inside the
+GaloisVision folder**. `firebase use`, `npm install` and `npm run deploy` all read
+`firebase.json` and `package.json` from whatever directory you are standing in — run them
+from the GroupVote folder by mistake and they would operate on GroupVote.
+
+### Step 0 — Get this repo onto your machine, on the right branch
+
+```bash
+cd ~/path/to/GaloisVision      # wherever you keep it
+```
+
+Don't have it locally yet?
+
+```bash
+git clone https://github.com/anikolopzig/GaloisVision
+cd GaloisVision
+```
+
+The deploy config lives on the `claude/quirky-johnson-21e5e3` branch until it's merged, so
+check it out:
+
+```bash
+git fetch origin
+git checkout claude/quirky-johnson-21e5e3
+```
+
+**Confirm you're in the right place** before going further — this should print the hosting
+config, not "No such file":
+
+```bash
+cat firebase.json
+```
+
+Another useful check at any point: `firebase use` on its own prints the currently active
+project. If it ever says `groupvote-12796` while you're in this folder, stop — you're in
+the wrong directory.
+
+---
+
 ## One-time setup (about 5 minutes)
 
 ### Step 1 — Confirm the Firebase CLI is ready
