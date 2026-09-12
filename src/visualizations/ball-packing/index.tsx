@@ -13,7 +13,6 @@ import {
   pigeonhole,
   randomLayout,
   relax,
-  scatterLayout,
   totalOverlapArea,
   walkSat,
   type Ball,
@@ -32,7 +31,6 @@ function seed(p: Preset, d: Domain): Ball[] {
   if (p.centres) return p.centres.map(([x, y]) => normalizeCentre({ x: x * d.side, y: y * d.side }, d));
   const n = p.settings.n ?? DEFAULTS.n;
   if (p.layout === "hex") return hexLayout(n, d);
-  if (p.layout === "scatter") return scatterLayout(n, d, Math.random).balls;
   return gridLayout(n, d);
 }
 
@@ -103,24 +101,8 @@ export function BallPackingVisualization() {
 
   function applyLayout(mode: LayoutMode) {
     const d = domainOf(settings);
-    if (mode === "scatter") {
-      const { balls: bs, placed } = scatterLayout(settings.n, d, Math.random);
-      setBalls(bs);
-      setActionNote(
-        placed < settings.n
-          ? `Random search placed ${placed} of ${settings.n} balls without overlap before giving up. Strong evidence that this radius is too big — but only the pigeonhole bound below actually proves it.`
-          : null,
-      );
-      return;
-    }
     setActionNote(null);
-    setBalls(
-      mode === "hex"
-        ? hexLayout(settings.n, d)
-        : mode === "random"
-          ? randomLayout(settings.n, d, Math.random)
-          : gridLayout(settings.n, d),
-    );
+    setBalls(mode === "random" ? randomLayout(settings.n, d, Math.random) : gridLayout(settings.n, d));
   }
 
   function search() {
@@ -262,7 +244,7 @@ export function BallPackingVisualization() {
           ) : (
             <div className="msg msg-info">
               <strong>{plural(analysis.pairs, "overlapping pair")}.</strong> Nothing forces this — try{" "}
-              <em>Separate</em> or <em>Scatter</em>, or drag the balls apart by hand.
+              <em>Settle</em> or <em>WalkSAT</em>, or drag the balls apart by hand.
             </div>
           )}
           {actionNote && <div className="msg msg-info">{actionNote}</div>}

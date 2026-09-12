@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { LayoutMode } from "../../math/packing";
 import { num } from "./format";
-import { MAX_BALLS, MAX_SIDE, MIN_SIDE, type Settings } from "./settings";
+import { MAX_BALLS, MAX_SIDE, MIN_SIDE, SLIDER_SIDE, type Settings } from "./settings";
 
 type FieldProps = {
   label: string;
@@ -11,6 +11,8 @@ type FieldProps = {
   step: number;
   decimals?: number;
   slider?: boolean;
+  /** Upper end of the slider alone, when the typed box should reach further than dragging usefully can. */
+  sliderMax?: number;
   hint?: string;
   onChange: (v: number) => void;
 };
@@ -19,7 +21,19 @@ type FieldProps = {
  * A number you can either type or drag. The typed text is held locally while the
  * field is being edited so half-finished input like "0." survives a keystroke.
  */
-export function NumberField({ label, value, min, max, step, decimals = 4, slider = true, hint, onChange }: FieldProps) {
+export function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  decimals = 4,
+  slider = true,
+  sliderMax,
+  hint,
+  onChange,
+}: FieldProps) {
+  const top = sliderMax ?? max;
   const [draft, setDraft] = useState<string | null>(null);
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
 
@@ -46,9 +60,9 @@ export function NumberField({ label, value, min, max, step, decimals = 4, slider
             className="pack-slider"
             type="range"
             min={min}
-            max={max}
+            max={top}
             step={step}
-            value={Math.min(max, Math.max(min, value))}
+            value={Math.min(top, Math.max(min, value))}
             onChange={(e) => {
               setDraft(null);
               onChange(clamp(Number(e.target.value)));
@@ -129,31 +143,20 @@ export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }:
         value={s.side}
         min={MIN_SIDE}
         max={MAX_SIDE}
-        step={0.1}
-        slider={false}
+        sliderMax={SLIDER_SIDE}
+        step={0.05}
+        decimals={2}
+        hint={`r/L = ${num(s.side > 0 ? s.radius / s.side : 0, 3)}`}
         onChange={(v) => onChange({ side: v })}
       />
-      <div className="examples">
-        {[1, 2, 5, 10].map((v) => (
-          <button key={v} className="chip" onClick={() => onChange({ side: v })}>
-            L = {v}
-          </button>
-        ))}
-      </div>
 
       <h3 style={{ marginTop: 18 }}>Arrange</h3>
       <div className="pack-buttons">
         <button className="btn secondary" onClick={() => onLayout("grid")}>
           Grid
         </button>
-        <button className="btn secondary" onClick={() => onLayout("hex")}>
-          Hexagonal
-        </button>
         <button className="btn secondary" onClick={() => onLayout("random")}>
           Random
-        </button>
-        <button className="btn secondary" onClick={() => onLayout("scatter")}>
-          Scatter (no overlap)
         </button>
       </div>
       <div className="pack-buttons" style={{ marginTop: 8 }}>

@@ -24,6 +24,12 @@ export type Settings = {
 export const MAX_BALLS = 48;
 export const MIN_SIDE = 0.1;
 export const MAX_SIDE = 100;
+/**
+ * How far the side-length slider drags. Only the ratio r/L decides whether a
+ * packing fits, so a larger square buys nothing the radius cannot; the typed box
+ * still reaches MAX_SIDE for anyone who wants the room.
+ */
+export const SLIDER_SIDE = 10;
 export const MAX_K = 10;
 
 export function domainOf(s: Settings): Domain {
@@ -47,8 +53,8 @@ export const DEFAULTS: Settings = {
 export type Preset = {
   label: string;
   note: string;
-  /** How to seed the centres; "scatter" looks for a genuinely overlap-free start. */
-  layout: "grid" | "hex" | "scatter";
+  /** How to seed the centres when no explicit ones are given. */
+  layout: "grid" | "hex";
   /** Explicit centres as fractions of the side, used in place of `layout` when given. */
   centres?: [number, number][];
   settings: Partial<Settings>;
