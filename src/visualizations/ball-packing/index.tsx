@@ -164,11 +164,8 @@ export function BallPackingVisualization() {
         <h1 style={{ margin: 0 }}>Balls in a square, and on a torus</h1>
       </div>
       <p>
-        Put <strong>n</strong> balls of radius <strong>r</strong> over a square of side <strong>L</strong> and see what
-        has to give. Every ball has its own colour, so the area painted in that colour is the area that ball alone
-        covers; anything <strong style={{ color: "var(--error)" }}>red</strong> is shared by two or more balls. Drag a
-        ball to move it. Switch the square for a torus and the edges are glued, so a ball leaving one side comes back in
-        on the other.
+        Put <strong>n</strong> balls of radius <strong>r</strong> over a square or torus of side <strong>L</strong> and
+        see overlapping area in <strong style={{ color: "var(--error)" }}>red</strong>.
       </p>
 
       <div className="examples" style={{ marginBottom: 4 }}>
