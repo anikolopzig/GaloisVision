@@ -181,16 +181,10 @@ export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }:
         onChange={(v) => onChange({ noise: v })}
       />
       <p className="section-note">
-        Separating nudges every overlapping pair apart along the line of centres; <em>Settle</em> runs two hundred of
-        those sweeps, enough to reach an exactly tangent packing. In a crowd with no room the number of pairs can go{" "}
-        <em>up</em> while the shared area falls — a few deep overlaps become many shallow ones. Drag any ball in the
-        picture to move it by hand.
+        <em>Separate</em> nudges overlapping pairs apart; <em>Settle</em> repeats it two hundred times, then jams.
       </p>
       <p className="section-note">
-        <em>WalkSAT</em> treats each pair as a constraint "these two are at least 2r apart" and searches: pick a pair
-        that is violated, then with probability p move one of them clear in a random direction, otherwise in the
-        direction that leaves the fewest other pairs overlapping. Settling only ever moves downhill and jams; the random
-        moves are what get it out. Too much noise is as bad as none — try p = 0 and p = 0.5 against the default.
+        <em>WalkSAT</em> escapes that jam: move a ball clear, randomly with probability p, else greedily.
       </p>
 
       <h3 style={{ marginTop: 18 }}>Show</h3>
