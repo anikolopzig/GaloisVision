@@ -38,7 +38,8 @@ export function domainOf(s: Settings): Domain {
 
 export const DEFAULTS: Settings = {
   n: 2,
-  radius: 0.75,
+  /** Diameter 3/4 — the size from the class problem. */
+  radius: 0.375,
   side: 1,
   geometry: "square",
   confine: false,
