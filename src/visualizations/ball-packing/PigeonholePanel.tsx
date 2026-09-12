@@ -90,7 +90,9 @@ export function PigeonholePanel({ packing, report, settings, onChange, overlappi
           Some cell does hold two centres, but r = {num(radius)} is{" "}
           {radius === report.forcedRadius ? "exactly at" : "below"} the threshold {num(report.forcedRadius)}, so two
           centres in one cell can still be far enough apart. The argument is silent here —{" "}
-          {overlapping === 0 ? "and indeed nothing overlaps." : `the ${plural(overlapping, "overlapping pair")} on screen ${overlapping === 1 ? "is" : "are"} an accident of this arrangement, not a necessity.`}
+          {overlapping === 0
+            ? "and indeed nothing overlaps."
+            : `it neither forces the ${plural(overlapping, "overlapping pair")} on screen nor promises they can be cleared.`}
         </div>
       ) : (
         <div className="msg msg-info">

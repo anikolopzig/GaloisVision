@@ -238,15 +238,11 @@ export function BallPackingVisualization() {
             </div>
           ) : report.forcedOverlap ? (
             <div className="msg msg-warn">
-              <strong>{plural(analysis.pairs, "overlapping pair")}</strong> — and no arrangement can do better.
-              Pigeonhole forces an overlap for any r above {num(report.forcedRadius)}; see below.
+              <strong>Some pair must overlap.</strong> Pigeonhole forces it for any r above {num(report.forcedRadius)},
+              whatever the arrangement; see below. ({plural(analysis.pairs, "overlapping pair")} here — whether that is
+              the fewest possible is a different question, and not one pigeonhole answers.)
             </div>
-          ) : (
-            <div className="msg msg-info">
-              <strong>{plural(analysis.pairs, "overlapping pair")}.</strong> Nothing forces this — try{" "}
-              <em>Settle</em> or <em>WalkSAT</em>, or drag the balls apart by hand.
-            </div>
-          )}
+          ) : null}
           {actionNote && <div className="msg msg-info">{actionNote}</div>}
 
           <div className="facts">
