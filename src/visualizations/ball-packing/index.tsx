@@ -11,6 +11,7 @@ import {
   overlappingPairCount,
   packingDensity,
   pigeonhole,
+  radiusSearch,
   randomLayout,
   relax,
   totalOverlapArea,
@@ -48,6 +49,7 @@ export function BallPackingVisualization() {
   const [selected, setSelected] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const domain = domainOf(settings);
   const packing: Packing = { balls, ...domain };
@@ -122,6 +124,58 @@ export function BallPackingVisualization() {
             ? `Zero is out of reach here: pigeonhole forces an overlap at this radius.`
             : `Run it again, or try a different noise p — the search is randomised, so a second run explores elsewhere.`),
       );
+    }
+  }
+
+  /**
+   * Bisect for the largest radius n balls can be packed at, yielding to the
+   * browser between attempts. A whole search is seconds of arithmetic at n = 48,
+   * which is a frozen page if it runs in one go, and the bracket narrowing is
+   * worth watching anyway.
+   */
+  async function findRadius() {
+    if (searching) return;
+    const { side, geometry, confine } = settings;
+    // What "fits" means here is the domain's business, and the three answers
+    // differ enough that the note has to say which one it found.
+    const where = confine
+      ? "packed wholly inside the square"
+      : geometry === "torus"
+        ? "on the torus"
+        : "with centres in the square, balls free to overhang";
+
+    if (n < 2) {
+      setActionNote(
+        confine || geometry === "torus"
+          ? `One ball has nothing to overlap but itself, so there is nothing to bisect: ${geometry === "torus" ? "it meets its own image" : "it leaves the square"} once r passes L/2 = ${num(side / 2)}.`
+          : `One ball has nothing to overlap and may overhang the square, so there is no largest r to find. Add a second ball, or keep whole balls inside the walls.`,
+      );
+      return;
+    }
+
+    setSearching(true);
+    const d = { side, geometry, confine };
+    try {
+      const it = radiusSearch(n, d, Math.random, { noise: settings.noise });
+      for (let s = it.next(); ; s = it.next()) {
+        if (s.done) {
+          const r = s.value;
+          update({ radius: r.radius });
+          setBalls(r.balls);
+          setActionNote(
+            `Largest r for ${plural(n, "ball")} ${where}: ${num(r.radius)}, a diameter of ${num(2 * r.radius)}. ` +
+              `WalkSAT packed that and failed at ${num(r.failedAt)}, so the true answer is at least ${num(r.radius)} — a failed probe is the search giving up, not a proof. ` +
+              `${plural(r.probes.length, "probe")} bisected ${num(r.bracket.lo)} to ${num(r.bracket.hi)}, and only those two ends are proved: a ${r.bracket.m}×${r.bracket.m} grid packs the lower one, pigeonhole on ${r.bracket.k}² cells forbids the upper.`,
+          );
+          break;
+        }
+        setActionNote(
+          `Searching… the answer is between ${num(s.value.lo)} and ${num(s.value.hi)} after ${plural(s.value.probes.length, "probe")}.`,
+        );
+        await new Promise((res) => setTimeout(res, 0));
+      }
+    } finally {
+      setSearching(false);
     }
   }
 
@@ -285,6 +339,8 @@ export function BallPackingVisualization() {
             onLayout={applyLayout}
             onSeparate={separate}
             onSearch={search}
+            onFindRadius={findRadius}
+            busy={searching}
           />
 
           <div className="card" style={{ marginTop: 18 }}>

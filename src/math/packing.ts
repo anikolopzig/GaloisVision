@@ -339,6 +339,8 @@ export type WalkSatResult = {
   violations: number;
   /** Overlapping pairs in the arrangement it was handed, so a caller can say what the search bought. */
   initialViolations: number;
+  /** Total overlapping area in the arrangement returned — what the tiebreak minimises. */
+  area: number;
   /** Steps taken; fewer than asked for when an overlap-free arrangement turned up early. */
   steps: number;
   /** No pair of distinct balls overlaps. On the torus a ball may still meet its own image. */
@@ -366,9 +368,18 @@ export type WalkSatOptions = {
  *   2. with probability `noise`, move one of that pair's two balls somewhere
  *      random (the random walk);
  *   3. otherwise move whichever of the two balls, to whichever candidate spot,
- *      leaves the fewest violated clauses — ties broken by total
- *      interpenetration, which keeps the greedy step from stalling on the many
- *      candidates that tie on a bare count (the greedy descent).
+ *      leaves the fewest violated clauses — ties broken by total overlapping
+ *      area, which keeps the greedy step from stalling on the many candidates
+ *      that tie on a bare count (the greedy descent).
+ *
+ * Area rather than interpenetration breaks those ties, and the two orderings do
+ * differ: a lens grows like the depth to the power 3/2, so summing areas leans
+ * on one deep overlap far harder than on several shallow ones. Measured over
+ * forty trials each at n = 5..36, the two tiebreaks solve at the same rate and
+ * leave the same area to within a couple of percent — this is not a speed-up.
+ * What it buys is that the search now minimises the quantity the picture shows
+ * in red and the facts panel reports, so watching it run and reading the number
+ * agree about what "better" means.
  *
  * The noise is the whole point, and it is what `relax` lacks: relaxation only
  * ever moves downhill, so it settles into the first local minimum it reaches
@@ -394,17 +405,24 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
   // move costs one row update rather than a rescan of every pair.
   const depth = new Float64Array(n * n); // interpenetration per pair, 0 when clear
   let violations = 0;
-  let totalDepth = 0;
+  let totalArea = 0;
 
   /** How deep two centres interpenetrate; ≤ 0 when they are clear of each other. */
   const gap = (a: Ball, b: Ball) => 2 * radius - distance(a, b, side, geometry);
+
+  /**
+   * The lens two centres share, from the depth already computed. `depth` stays
+   * the array of record because its sign is exact, where a lens shrinks like
+   * g^(3/2) and a tangent pair's area is indistinguishable from zero.
+   */
+  const areaOf = (g: number) => (g > slack ? lensArea(2 * radius - g, radius) : 0);
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const g = gap(balls[i], balls[j]);
       if (g > slack) {
         depth[i * n + j] = g;
-        totalDepth += g;
+        totalArea += areaOf(g);
         violations++;
       }
     }
@@ -414,8 +432,8 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
   const bounds = geometry === "torus" ? { lo: 0, hi: side } : centreBounds(p);
   const span = Math.max(0, bounds.hi - bounds.lo);
 
-  /** What moving ball `b` to `pos` would cost: clauses left violated, and by how much. */
-  function costAt(b: number, pos: Ball): { count: number; depth: number } {
+  /** What moving ball `b` to `pos` would cost: clauses left violated, and how much red. */
+  function costAt(b: number, pos: Ball): { count: number; area: number } {
     let count = 0;
     let sum = 0;
     for (let j = 0; j < n; j++) {
@@ -423,10 +441,10 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
       const g = gap(pos, balls[j]);
       if (g > slack) {
         count++;
-        sum += g;
+        sum += areaOf(g);
       }
     }
-    return { count, depth: sum };
+    return { count, area: sum };
   }
 
   function moveTo(b: number, pos: Ball) {
@@ -438,7 +456,7 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
       const g = gap(pos, balls[j]);
       const now = g > slack ? g : 0;
       depth[k] = now;
-      totalDepth += now - was;
+      totalArea += areaOf(now) - areaOf(was);
       if (now > 0 && was === 0) violations++;
       else if (now === 0 && was > 0) violations--;
     }
@@ -466,7 +484,7 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
 
   let best = balls.map((b) => ({ x: b.x, y: b.y }));
   let bestViolations = violations;
-  let bestDepth = totalDepth;
+  let bestArea = totalArea;
   let taken = 0;
 
   for (let step = 0; step < steps && violations > 0; step++) {
@@ -494,10 +512,10 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
       moveTo(b, repairAt(b === i ? j : i, rng() * Math.PI * 2));
     } else {
       // The greedy descent: of the two balls and the directions on offer, take
-      // whichever leaves the fewest clauses violated. Ties go to the shallower
-      // total interpenetration, without which the many candidates that tie on a
+      // whichever leaves the fewest clauses violated. Ties go to the smaller
+      // total overlapping area, without which the many candidates that tie on a
       // bare count would make the step a coin flip.
-      let choice: { b: number; pos: Ball; count: number; depth: number } | null = null;
+      let choice: { b: number; pos: Ball; count: number; area: number } | null = null;
       for (const b of [i, j]) {
         const partner = b === i ? j : i;
         for (let c = 0; c < candidates; c++) {
@@ -511,25 +529,35 @@ export function walkSat(p: Packing, rng: () => number = Math.random, opts: WalkS
                   ) // one wildcard, in case this ball belongs somewhere else entirely
                 : repairAt(partner, rng() * Math.PI * 2);
           const cost = costAt(b, pos);
-          if (!choice || cost.count < choice.count || (cost.count === choice.count && cost.depth < choice.depth)) {
-            choice = { b, pos, count: cost.count, depth: cost.depth };
+          if (!choice || cost.count < choice.count || (cost.count === choice.count && cost.area < choice.area)) {
+            choice = { b, pos, count: cost.count, area: cost.area };
           }
         }
       }
       if (choice) moveTo(choice.b, choice.pos);
     }
 
-    if (violations < bestViolations || (violations === bestViolations && totalDepth < bestDepth)) {
+    if (violations < bestViolations || (violations === bestViolations && totalArea < bestArea)) {
       bestViolations = violations;
-      bestDepth = totalDepth;
+      bestArea = totalArea;
       best = balls.map((b) => ({ x: b.x, y: b.y }));
     }
+  }
+
+  // `totalArea` is accumulated a pair at a time, which is fine for comparing two
+  // candidates but drifts by a few ulps over thousands of moves — enough for a
+  // solved packing to report 3e-17 of overlap. What goes out is measured once,
+  // from the arrangement that goes out with it.
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) area += areaOf(gap(best[i], best[j]));
   }
 
   return {
     balls: best,
     violations: bestViolations,
     initialViolations,
+    area,
     steps: taken,
     solved: bestViolations === 0,
   };
@@ -599,4 +627,144 @@ export function pigeonhole(p: Packing, k: number): PigeonholeReport {
     occupancy,
     sharedCells,
   };
+}
+
+// --------------------------------------------------------- radius search ----
+
+export type RadiusProbe = {
+  radius: number;
+  /** The search found an overlap-free arrangement at this radius. */
+  fits: boolean;
+  /** Overlapping pairs in the best arrangement it managed, 0 when it fits. */
+  violations: number;
+};
+
+export type RadiusBracket = {
+  /** A radius that provably fits: an m × m grid, m = ⌈√n⌉, one ball inscribed per cell. */
+  lo: number;
+  /** A radius that provably cannot: pigeonhole on the finest grid with k² < n. */
+  hi: number;
+  /** The m of the lower bound, and the k of the upper. */
+  m: number;
+  k: number;
+};
+
+export type RadiusSearchResult = {
+  bracket: RadiusBracket;
+  /** Largest radius an arrangement was actually found for. */
+  radius: number;
+  /** That arrangement. */
+  balls: Ball[];
+  /** Smallest radius the search failed at — an upper estimate, not a proof. */
+  failedAt: number;
+  probes: RadiusProbe[];
+};
+
+export type RadiusSearchOptions = {
+  /** Stop once the bracket is narrower than this. */
+  tolerance?: number;
+  /** Independent WalkSAT runs per radius before calling it a failure. */
+  attempts?: number;
+  /** Steps per WalkSAT run. */
+  steps?: number;
+  noise?: number;
+};
+
+/**
+ * The interval the true answer lives in, both ends proved rather than searched.
+ *
+ * Below: ⌈√n⌉² cells of side L/⌈√n⌉ hold one inscribed ball each, so r = L/2⌈√n⌉
+ * always fits — `gridLayout` realises it exactly, every neighbour tangent.
+ *
+ * Above: pigeonhole. With k² < n some cell holds two centres, and a cell is
+ * √2·L/k across, so any r beyond √2·L/2k forces an overlap. `bestK` picks the
+ * finest such grid, which is the tightest this argument gets; taking k a power
+ * of two instead would be sound but would start the search from further out.
+ */
+export function radiusBracket(n: number, side: number): RadiusBracket {
+  const m = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, n))));
+  const k = bestK(n);
+  // n = 1 has nothing to prove impossible: one ball fits until it outgrows the square.
+  return { lo: side / (2 * m), hi: k > 0 ? (Math.SQRT2 * side) / (2 * k) : side / 2, m, k };
+}
+
+/**
+ * The largest radius n balls can be packed at, found by bisection.
+ *
+ * Feasibility at a given radius is decided by running WalkSAT — which is a
+ * search, not a decision procedure. It can fail on a radius that does fit, and
+ * it never fails on one that does not, so each probe is sound in one direction
+ * only and the number that comes back is a lower estimate of the true packing
+ * radius. `failedAt` is where the search gave up, not where packing becomes
+ * impossible; only `bracket.hi` is proved impossible.
+ *
+ * Each radius gets its first attempt warm-started from the best packing found so
+ * far, which at a slightly smaller radius is usually most of the answer, and its
+ * remaining attempts from fresh random layouts.
+ */
+export type RadiusSearchProgress = {
+  /** The bracket as it stands: the answer is in [lo, hi). */
+  lo: number;
+  hi: number;
+  /** Probes resolved so far. */
+  probes: RadiusProbe[];
+};
+
+export function* radiusSearch(
+  n: number,
+  d: Omit<Domain, "radius">,
+  rng: () => number = Math.random,
+  opts: RadiusSearchOptions = {},
+): Generator<RadiusSearchProgress, RadiusSearchResult, void> {
+  const tolerance = Math.max(1e-12, opts.tolerance ?? 1e-3);
+  const attempts = Math.max(1, opts.attempts ?? 3);
+  const steps = opts.steps ?? 3000;
+  const noise = opts.noise ?? 0.15;
+
+  const bracket = radiusBracket(n, d.side);
+  const probes: RadiusProbe[] = [];
+
+  let lo = bracket.lo;
+  let hi = bracket.hi;
+  let balls = gridLayout(n, { ...d, radius: lo });
+
+  while (hi - lo > tolerance) {
+    const radius = (lo + hi) / 2;
+    const domain = { ...d, radius };
+
+    let found: Ball[] | null = null;
+    let violations = Number.POSITIVE_INFINITY;
+    for (let a = 0; a < attempts && !found; a++) {
+      const start = a === 0 ? balls.map((b) => normalizeCentre(b, domain)) : randomLayout(n, domain, rng);
+      const r = walkSat({ balls: start, ...domain }, rng, { steps, noise });
+      violations = Math.min(violations, r.violations);
+      if (r.solved) found = r.balls;
+      // One attempt is the unit of work a caller can afford to interleave with
+      // anything else; a whole probe at n = 48 is most of a second.
+      yield { lo, hi, probes };
+    }
+
+    probes.push({ radius, fits: found !== null, violations: found ? 0 : violations });
+    if (found) {
+      lo = radius;
+      balls = found;
+    } else {
+      hi = radius;
+    }
+  }
+
+  return { bracket, radius: lo, balls, failedAt: hi, probes };
+}
+
+/** `radiusSearch` run straight through, for callers with nothing else to do. */
+export function searchMaxRadius(
+  n: number,
+  d: Omit<Domain, "radius">,
+  rng: () => number = Math.random,
+  opts: RadiusSearchOptions = {},
+): RadiusSearchResult {
+  const it = radiusSearch(n, d, rng, opts);
+  let s = it.next();
+  while (!s.done) s = it.next();
+  return s.value;
 }

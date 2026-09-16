@@ -63,10 +63,10 @@ export type Preset = {
 
 export const PRESETS: Preset[] = [
   {
-    label: "2 balls, r = ¾",
-    note: "The example from class: two balls of radius 3/4 with centres in a unit square must overlap.",
+    label: "5 balls, diameter ¾",
+    note: "The example from class. Quarter the square: five centres in four cells put two of them in one cell, at most √2/2 ≈ 0.707 apart — and the balls are 0.75 wide, so that pair overlaps. Four balls at this size fit fine; the fifth is the one with nowhere to go.",
     layout: "grid",
-    settings: { n: 2, radius: 0.75, side: 1, geometry: "square", confine: false, showPigeonhole: true },
+    settings: { n: 5, radius: 0.375, side: 1, geometry: "square", confine: false, showPigeonhole: true },
   },
   {
     label: "5 balls, r = √2⁄4",

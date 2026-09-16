@@ -92,9 +92,12 @@ type Props = {
   onLayout: (mode: LayoutMode) => void;
   onSeparate: (sweeps: number) => void;
   onSearch: () => void;
+  onFindRadius: () => void;
+  /** Set while the radius bisection is running, so its button can say so. */
+  busy: boolean;
 };
 
-export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }: Props) {
+export function Controls({ settings, onChange, onLayout, onSeparate, onSearch, onFindRadius, busy }: Props) {
   const s = settings;
   return (
     <div className="card pack-controls">
@@ -170,6 +173,11 @@ export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }:
           WalkSAT
         </button>
       </div>
+      <div className="pack-buttons" style={{ marginTop: 8 }}>
+        <button className="btn secondary" onClick={onFindRadius} disabled={busy}>
+          {busy ? "Searching…" : `Largest r for ${s.n} balls`}
+        </button>
+      </div>
       <NumberField
         label="WalkSAT noise p"
         value={settings.noise}
@@ -185,6 +193,10 @@ export function Controls({ settings, onChange, onLayout, onSeparate, onSearch }:
       </p>
       <p className="section-note">
         <em>WalkSAT</em> escapes that jam: move a ball clear, randomly with probability p, else greedily.
+      </p>
+      <p className="section-note">
+        <em>Largest r</em> bisects between a radius that provably packs and one pigeonhole forbids, asking WalkSAT at
+        each step.
       </p>
 
       <h3 style={{ marginTop: 18 }}>Show</h3>

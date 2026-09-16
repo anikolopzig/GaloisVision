@@ -16,8 +16,11 @@ import {
   overlappingPairCount,
   packingDensity,
   pigeonhole,
+  radiusBracket,
+  radiusSearch,
   randomLayout,
   relax,
+  searchMaxRadius,
   scatterLayout,
   totalOverlapArea,
   walkSat,
@@ -417,6 +420,98 @@ check("cellIndex clamps the far corner", cellIndex({ x: 1, y: 1 }, 2, 1) === 3);
   }
   check("forced overlap always shows up in the square", squareViolations === 0, `${squareViolations} violations`);
   check("forced overlap always shows up on the torus", torusViolations === 0, `${torusViolations} violations`);
+}
+
+// ---- the WalkSAT tiebreak minimises overlapping area ----
+{
+  // Pair count and overlapping area do not order arrangements the same way, which
+  // is the whole reason the tiebreak changed: one deep lens beats two shallow
+  // contacts on count and loses to them badly on area.
+  const r = 0.1;
+  const deep = pack([{ x: 0.5, y: 0.5 }, { x: 0.55, y: 0.5 }, { x: 0.9, y: 0.9 }], r);
+  const shallow = pack([{ x: 0.2, y: 0.5 }, { x: 0.39, y: 0.5 }, { x: 0.58, y: 0.5 }], r);
+  check(
+    "one deep overlap, two shallow ones",
+    overlappingPairCount(contacts(deep)) === 1 && overlappingPairCount(contacts(shallow)) === 2,
+    `${overlappingPairCount(contacts(deep))} vs ${overlappingPairCount(contacts(shallow))}`,
+  );
+  check(
+    "the deeper arrangement loses on area despite winning on count",
+    totalOverlapArea(contacts(deep)) > totalOverlapArea(contacts(shallow)),
+    `${totalOverlapArea(contacts(deep)).toFixed(5)} vs ${totalOverlapArea(contacts(shallow)).toFixed(5)}`,
+  );
+
+  const res = walkSat(pack(gridLayout(9, dom(0.2)), 0.2), lcg(42), { steps: 400 });
+  check("walkSat reports the area of the arrangement it returns", Math.abs(res.area - totalOverlapArea(contacts(pack(res.balls, 0.2)))) < 1e-9, `${res.area} vs ${totalOverlapArea(contacts(pack(res.balls, 0.2)))}`);
+  check("walkSat reports zero area when it solves", !res.solved || res.area === 0, `${res.area}`);
+}
+{
+  // On an instance with no solution the tiebreak is all there is, so this is
+  // where the change has to show: past the pigeonhole threshold, the search
+  // should still be shrinking the red.
+  const r = 0.38;
+  const rng = lcg(20260916);
+  let shrank = 0;
+  for (let t = 0; t < 12; t++) {
+    const start = randomLayout(5, dom(r), rng);
+    const res = walkSat(pack(start, r), rng, { steps: 800 });
+    if (res.area < totalOverlapArea(contacts(pack(start, r)))) shrank++;
+  }
+  check("walkSat shrinks the overlapping area even when nothing can fit", shrank === 12, `${shrank}/12`);
+}
+
+// ---- the radius bracket is proved at both ends ----
+{
+  for (const n of [2, 3, 5, 9, 16, 30]) {
+    const b = radiusBracket(n, 1);
+    const fits = pack(gridLayout(n, dom(b.lo, { confine: true })), b.lo, { confine: true });
+    check(`n = ${n}: the lower bound really is packable`, overlappingPairCount(contacts(fits)) === 0, `${overlappingPairCount(contacts(fits))} pairs`);
+    // Anything above hi is forced, by the same k the bound was built from.
+    const over = pack(randomLayout(n, dom(b.hi * 1.001), lcg(7 + n)), b.hi * 1.001);
+    check(`n = ${n}: overlap is forced past the upper bound`, pigeonhole(over, b.k).forcedOverlap, `k = ${b.k}`);
+    check(`n = ${n}: the bracket is ordered`, b.lo < b.hi, `${b.lo} .. ${b.hi}`);
+  }
+  check("a single ball has no forced radius", radiusBracket(1, 1).k === 0 && radiusBracket(1, 1).hi === 0.5);
+  check("the bracket scales with the side", radiusBracket(5, 4).lo === 4 * radiusBracket(5, 1).lo);
+}
+
+// ---- the bisection lands on the known optimal packings ----
+{
+  // Proved optima for n circles in a unit square (Packomania / Goldberg).
+  const known: Record<number, number> = { 2: 0.292893, 3: 0.254333, 4: 0.25, 5: 0.207107, 6: 0.18768, 9: 0.166667 };
+  const d = { side: 1, geometry: "square" as const, confine: true };
+  for (const n of Object.keys(known).map(Number)) {
+    const res = searchMaxRadius(n, d, lcg(1000 + n));
+    const best = known[n];
+    check(
+      `n = ${n}: bisection gets within 3% of the optimal packing radius`,
+      res.radius <= best + 1e-3 && res.radius > best * 0.97,
+      `found ${res.radius.toFixed(5)}, optimal ${best.toFixed(5)}`,
+    );
+    check(
+      `n = ${n}: the arrangement returned actually packs at the radius returned`,
+      overlappingPairCount(contacts({ balls: res.balls, ...d, radius: res.radius })) === 0,
+      `${overlappingPairCount(contacts({ balls: res.balls, ...d, radius: res.radius }))} pairs`,
+    );
+    check(`n = ${n}: the search stays inside its own bracket`, res.radius >= res.bracket.lo && res.failedAt <= res.bracket.hi);
+    check(`n = ${n}: bisection terminates under the tolerance`, res.failedAt - res.radius <= 1e-3, `${res.failedAt - res.radius}`);
+  }
+}
+{
+  const d = { side: 1, geometry: "square" as const, confine: true };
+  const a = searchMaxRadius(6, d, lcg(555));
+  const b = searchMaxRadius(6, d, lcg(555));
+  check("the search is deterministic given a seeded rng", a.radius === b.radius, `${a.radius} vs ${b.radius}`);
+  check("more balls never pack at a larger radius", searchMaxRadius(9, d, lcg(3)).radius <= searchMaxRadius(4, d, lcg(3)).radius + 1e-9);
+  const gen = radiusSearch(5, d, lcg(11));
+  let yields = 0;
+  let s = gen.next();
+  while (!s.done) {
+    yields++;
+    s = gen.next();
+  }
+  check("the generator yields between attempts and returns the result", yields > 0 && s.value.radius > 0, `${yields} yields`);
+  check("draining the generator matches the synchronous call", s.value.radius === searchMaxRadius(5, d, lcg(11)).radius);
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);
