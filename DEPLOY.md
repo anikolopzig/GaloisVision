@@ -7,9 +7,14 @@ means it can be hosted on any static CDN for **$0**.
 **Approach:** its own Firebase project, on the free **Spark** plan, completely separate
 from the GroupVote project.
 
-- **Live URL (after setup):** `https://galoisvision.web.app`
+- **Live URL:** <https://galoisvision.web.app> — up and serving.
 - **Cost:** $0, with a hard ceiling — see [Cost](#cost).
 - **Deploy command, forever after:** `npm run deploy`
+
+**The one-time setup below is already done.** The `galoisvision` Firebase project exists on
+the Spark plan, and `.firebaserc` is committed on `main`, so a fresh clone needs only the
+Firebase CLI logged in (Step 1) and then `npm run deploy`. Steps 2–4 are kept for
+recreating the setup from scratch — on a new machine, or into a different Firebase project.
 
 ---
 
@@ -47,7 +52,7 @@ GaloisVision folder**. `firebase use`, `npm install` and `npm run deploy` all re
 `firebase.json` and `package.json` from whatever directory you are standing in — run them
 from the GroupVote folder by mistake and they would operate on GroupVote.
 
-### Step 0 — Get this repo onto your machine, on the right branch
+### Step 0 — Get this repo onto your machine
 
 ```bash
 cd ~/path/to/GaloisVision      # wherever you keep it
@@ -60,12 +65,12 @@ git clone https://github.com/anikolopzig/GaloisVision
 cd GaloisVision
 ```
 
-The deploy config lives on the `claude/quirky-johnson-21e5e3` branch until it's merged, so
-check it out:
+The deploy config — `firebase.json`, `.firebaserc`, and the `deploy` script — is on
+`main`, so make sure you are up to date there:
 
 ```bash
-git fetch origin
-git checkout claude/quirky-johnson-21e5e3
+git checkout main
+git pull origin main
 ```
 
 **Confirm you're in the right place** before going further — this should print the hosting
@@ -108,9 +113,10 @@ firebase projects:create galoisvision --display-name "GaloisVision"
 New projects are created on the free **Spark** plan with no billing account attached.
 Leave it that way — nothing in this app needs Blaze.
 
-Project IDs are globally unique across all of Google Cloud, so `galoisvision` may be
-taken. If it is, pick another (`galoisvision-app`, `galoisvision-viz`, …). **Note the exact
-project ID the command prints** — the rest of the steps use it.
+Project IDs are globally unique across all of Google Cloud, and `galoisvision` is already
+taken — by this project. To stand up a *separate* one, pick another name
+(`galoisvision-app`, `galoisvision-viz`, …). **Note the exact project ID the command
+prints** — the rest of the steps use it.
 
 > Prefer clicking? <https://console.firebase.google.com> → **Create a project** → name it
 > `GaloisVision` → skip Google Analytics → stay on the **Spark** plan. The console will
@@ -119,13 +125,17 @@ project ID the command prints** — the rest of the steps use it.
 
 ### Step 3 — Point this repository at that project
 
+**Already done.** `.firebaserc` is committed on `main` and names `galoisvision`. Skip to
+Step 4 unless you created a *different* project in Step 2.
+
 From the repository root (`GaloisVision/`):
 
 ```bash
 firebase use --add
 ```
 
-Pick your new project from the list, and give it the alias `default` when prompted.
+Pick your project from the list and give it an alias when prompted. The alias is only a
+local shorthand — what binds the repo to a project is the project ID it records.
 
 This writes a `.firebaserc` file naming your project. **Commit it** — it's how the repo
 remembers where it deploys, and it's the thing that keeps GroupVote out of reach:
@@ -185,12 +195,18 @@ Instant, no rebuild needed.
 
 **$0/month, with a hard ceiling.**
 
-The production build is **~320 KB total (~98 KB gzipped over the wire)**. The Spark plan
-includes 10 GB of Hosting storage and 10 GB/month of transfer.
+The production build is **~429 KB total (~131 KB gzipped over the wire)**, as of the
+grid-forcing page. That page alone — the CDCL SAT solver plus the shape enumerators — is
+about 64 KB of the JavaScript, some 20 KB gzipped; nothing is lazy-loaded, so every visitor
+receives it. The Spark plan includes 10 GB of Hosting storage and 10 GB/month of transfer.
 
-At roughly 100 KB per first-time visitor (repeat visitors are served from cache), 10 GB of
-monthly transfer works out to something like **100,000 visits per month** before you'd hit
+At roughly 131 KB per first-time visitor (repeat visitors are served from cache), 10 GB of
+monthly transfer works out to something like **75,000 visits per month** before you'd hit
 the limit. For a study-aid site, that isn't a realistic concern.
+
+To re-check these figures after a change, run `npm run build`: it lists each bundled file
+with its gzipped size. Add the ~9.5 KB favicon, copied straight from `public/` and so not
+listed, to reach the totals above.
 
 The important part: because this project has **no billing account attached**, it *cannot*
 generate a charge. If it somehow exceeded the free tier, Firebase would disable the site
