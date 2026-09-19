@@ -17,6 +17,8 @@ npx tsx scripts/smoke.ts            # Galois group computation (assertions + exi
 npx tsx scripts/smoke-lattice.ts    # lattice math (assertions + exit code)
 npx tsx scripts/smoke-svp-cvp.ts    # Gauss reduction / Babai rounding (assertions + exit code)
 npx tsx scripts/smoke-packing.ts    # ball packing + pigeonhole bound (assertions + exit code)
+npx tsx scripts/smoke-sat.ts        # CDCL solver vs. exhaustive enumeration (assertions + exit code)
+npx tsx scripts/smoke-grid-forcing.ts  # grid shape-forcing reduction (assertions + exit code; ~1 min)
 ```
 
 To exercise the math layer without the UI, write a throwaway `tsx` script importing from `src/math/*` — that is the fastest way to validate computational changes. Each smoke script prints `PASS/FAIL` lines and exits non-zero on failure.
@@ -29,6 +31,7 @@ Note: Node 20.17 prints a "Vite requires 20.19+" warning that is harmless; build
 
 **Two-layer split — pure math vs. presentation:**
 - `src/math/` is framework-free TypeScript. It exports exact, well-tested primitives and never imports React. The base layer is `rational.ts` (exact `Rational = {n, d}` backed by `BigInt`); everything is built on it so discriminants, determinants, covolumes, and square tests are exact with no floating-point drift. `parser.ts` → `polynomial.ts` → `galoisGroup.ts`/`groups.ts`/`quadField.ts` form the Galois pipeline; `lattice.ts` is the lattice-analysis layer; `notation.ts` holds shared sub/superscript label helpers. Floats are derived (`toNumber`) only at the last moment for plotting. The one deliberate exception is `packing.ts`, which works in floating point throughout: circle-circle lens areas and the pigeonhole bound √2·L/k are transcendental, so there is no exact rational model to preserve. It is still framework-free, and it exports `TOUCH_TOL` because tangency — two disks exactly 2r apart — is the case that matters there and a bare `d < 2r` test would call a settled packing overlapping forever.
+- `sat.ts` is the exception to "framework-free *and* small": a full CDCL SAT solver (two-watched literals, first-UIP learning, VSIDS, Luby restarts, LBD clause-database reduction). It exists because `gridForcing.ts` answers "do k dots force a shape?" by *refuting* a formula, and UNSAT is a claim about every assignment at once — it cannot be checked by inspection, so the search has to actually run, in the browser. `gridForcing.ts` builds the instances, and its `ForcingRun` is **resumable**: `step(conflicts)` advances the search by a bounded number of conflicts so the page can slice a long refutation across frames instead of freezing (see `grid-forcing/useForcingRun.ts` — there is no worker).
 - `src/visualizations/<name>/` holds the React/SVG presentation. `index.tsx` exports the top-level component named in the registry, owns input/parse/analyze state (heavy computation wrapped in `useMemo`), and composes smaller input/plot components.
 
 **Rendering is hand-rolled SVG — there are no charting or 3D libraries.** Plots compute their own geometry and project to SVG (e.g. `lattice/LatticePlot3D.tsx` does its own orthographic 3D projection with pointer-drag rotation). View resets are done by changing a React `key` to remount, not by effects.

@@ -6,6 +6,7 @@ import { GaloisGroupVisualization } from "./galois-group";
 import { LatticeVisualization } from "./lattice";
 import { SvpCvpVisualization } from "./svp-cvp";
 import { BallPackingVisualization } from "./ball-packing";
+import { GridForcingVisualization } from "./grid-forcing";
 
 export type Visualization = {
   id: string;            // URL slug, e.g. "galois-group"
@@ -47,6 +48,14 @@ export const visualizations: Visualization[] = [
       "Drop n balls of radius r on a square or on the flat torus, see exactly which area each ball owns and which area they are forced to share, and watch the pigeonhole principle decide when overlap is unavoidable.",
     status: "ready",
     Component: BallPackingVisualization,
+  },
+  {
+    id: "grid-forcing",
+    title: "Forcing a shape on a grid",
+    description:
+      "Place dots on an N × N grid and see at once whether some of them form an isosceles triangle or a square; then have a SAT solver compute the smallest number of dots that makes the shape unavoidable, and read the reduction that turns the question into 3-SAT.",
+    status: "ready",
+    Component: GridForcingVisualization,
   },
   {
     id: "ideal-lattice",
