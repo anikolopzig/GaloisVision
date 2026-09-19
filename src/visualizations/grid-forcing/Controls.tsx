@@ -84,7 +84,9 @@ type Props = {
   onShowLabels: (v: boolean) => void;
   onClear: () => void;
   onFill: () => void;
-  onRandom: () => void;
+  onShuffle: () => void;
+  /** False when a shuffle could not move anything: an empty or a completely full board. */
+  canShuffle: boolean;
   onGreedy: () => void;
 };
 
@@ -100,7 +102,8 @@ export function Controls({
   onShowLabels,
   onClear,
   onFill,
-  onRandom,
+  onShuffle,
+  canShuffle,
   onGreedy,
 }: Props) {
   return (
@@ -166,8 +169,13 @@ export function Controls({
         <button className="btn secondary" onClick={onClear}>
           Clear
         </button>
-        <button className="btn secondary" onClick={onRandom}>
-          Random
+        <button
+          className="btn secondary"
+          onClick={onShuffle}
+          disabled={!canShuffle}
+          title={canShuffle ? undefined : "Place some dots — but not every cell — to shuffle them"}
+        >
+          Shuffle
         </button>
         <button className="btn secondary" onClick={onFill}>
           Fill
@@ -177,9 +185,10 @@ export function Controls({
         </button>
       </div>
       <p className="section-note">
-        <em>Greedy shape-free</em> walks the cells in a random order and keeps every one that does not complete a copy.
-        It is not optimal, but whatever it returns is checked, so its size is a genuine lower bound on how far you can
-        get.
+        <em>Shuffle</em> keeps however many dots you have placed and deals them to new cells, so you can see how
+        differently the same number of them can land. <em>Greedy shape-free</em> walks the cells in a random order
+        and keeps every one that does not complete a copy. It is not optimal, but whatever it returns is checked, so
+        its size is a genuine lower bound on how far you can get.
       </p>
 
       <h3 style={{ marginTop: 18 }}>Show</h3>

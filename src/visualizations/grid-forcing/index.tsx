@@ -109,14 +109,20 @@ export function GridForcingVisualization() {
     setPresetNote(p.note);
   }
 
-  function randomFill() {
+  /**
+   * Deal the dots already on the board to fresh cells. The count is whatever
+   * the user built, not a number of our choosing — the point is to see how
+   * differently the *same* number of dots can land.
+   */
+  function shuffleDots() {
     const m = n * n;
+    const count = selected.size;
+    if (count === 0 || count === m) return;
     const order = Array.from({ length: m }, (_, i) => i);
     for (let i = m - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
     }
-    const count = Math.max(3, Math.round(m * 0.35));
     place(order.slice(0, count));
   }
 
@@ -229,7 +235,8 @@ export function GridForcingVisualization() {
                 onShowLabels={setShowLabels}
                 onClear={() => place([])}
                 onFill={() => place(Array.from({ length: n * n }, (_, i) => i))}
-                onRandom={randomFill}
+                onShuffle={shuffleDots}
+                canShuffle={selected.size > 0 && selected.size < n * n}
                 onGreedy={() => place(bestGreedyAvoidingSet(n, forbidden, 80))}
               />
             </div>

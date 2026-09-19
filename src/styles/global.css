@@ -186,13 +186,14 @@ p { margin: 0 0 12px; color: var(--text-dim); }
   cursor: pointer;
   font-size: 14px;
 }
-.btn:hover { filter: brightness(1.05); }
+.btn:hover:not(:disabled) { filter: brightness(1.05); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.secondary {
   background: transparent;
   color: var(--text-dim);
   border: 1px solid var(--border-strong);
 }
-.btn.secondary:hover { color: var(--text); border-color: var(--accent); }
+.btn.secondary:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 
 .examples {
   display: flex;
