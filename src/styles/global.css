@@ -837,6 +837,32 @@ footer {
 }
 .gf-inline-btn:hover { filter: brightness(1.15); }
 
+/* The pad a shape is drawn on, and the motion class that reads it. */
+.gf-pad { margin-top: 12px; }
+.gf-pad-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.gf-pad-row > svg { flex: 0 1 196px; }
+.gf-pad-side {
+  flex: 1 1 130px;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gf-pad-side .gf-field { margin-top: 0; }
+.gf-pad-side .btn { padding: 7px 12px; }
+.gf-motion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.gf-motion-grid .btn { padding: 8px 10px; font-size: 13px; }
+.gf-count-empty { color: var(--error); }
+
 .gf-badge {
   display: inline-block;
   margin-top: 10px;
@@ -850,6 +876,7 @@ footer {
 .gf-badge-instant { border-color: rgba(126, 226, 200, 0.45); color: var(--accent); }
 .gf-badge-quick { border-color: rgba(126, 226, 200, 0.3); color: var(--accent); }
 .gf-badge-slow { border-color: rgba(240, 184, 76, 0.45); color: var(--warning); }
+.gf-badge-unknown { border-color: rgba(160, 170, 190, 0.4); color: var(--text-dim); }
 .gf-badge-outOfReach { border-color: rgba(255, 122, 122, 0.4); color: var(--error); }
 
 .gf-answer {

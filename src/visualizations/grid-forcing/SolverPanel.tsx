@@ -82,16 +82,23 @@ function OutcomeTable({ outcomes, onPlace }: { outcomes: readonly KOutcome[]; on
 
 export function SolverPanel({ n, shape, forbidden, width3, k, onK, onPlace, onThreshold }: Props) {
   const { state, running, start, cancel, reset } = useForcingRun();
-  const difficulty = solverDifficulty(n, shape);
-  const scannable = canScan(n, shape);
-  const decidable = canDecide(n);
-  const lo = minK(shape);
-  const hi = maxK(n);
 
   // A greedy arrangement is a certificate, not a guess: because it is verified
   // shape-free, every k up to its size is satisfiable by that same arrangement
   // (monotonicity again), so the scan can start there instead of at 3.
   const greedy = useMemo(() => bestGreedyAvoidingSet(n, forbidden, 80), [n, forbidden]);
+
+  // A shape someone drew has no measured timing behind it, so what the page can
+  // say about it has to be derived from the instance itself: how many copies
+  // there are to forbid, and how far greedy search already got without the
+  // solver. Both are certainties, which is what makes them worth gating on.
+  const evidence =
+    shape.id === "pattern" ? { copies: forbidden.length, greedy: greedy.length } : undefined;
+  const difficulty = solverDifficulty(n, shape, evidence);
+  const scannable = canScan(n, shape, evidence);
+  const decidable = canDecide(n, shape, evidence);
+  const lo = minK(shape);
+  const hi = maxK(n);
   const scanFrom = Math.min(hi, Math.max(lo, greedy.length));
 
   const answer = state?.answer ?? null;

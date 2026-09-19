@@ -20,6 +20,7 @@ import {
   cellAt,
   cellIndex,
   cells,
+  convexHull,
   convexOrder,
   describeOccurrence,
   findOccurrence,
@@ -36,6 +37,7 @@ import {
   type ShapeSpec,
 } from "../src/math/gridForcing";
 import { solveCnf, verifyModel } from "../src/math/sat";
+import { normalizePattern, type LatticePoint, type MotionClass } from "../src/math/patternShape";
 
 let pass = 0;
 let fail = 0;
@@ -500,6 +502,177 @@ const key = (s: Occurrence) => [...s].sort((a, b) => a - b).join(",");
   check("convexOrder puts square vertices in cyclic order", sides.every((s) => s === sides[0]));
   const detail = describeOccurrence(n, SQUARE, q);
   check("a square's readout marks all four sides", detail.edges.length === 4 && detail.edges.every((e) => e.witnessing));
+}
+
+// ---- convex hull ----
+//
+// It is what the board shades over a drawn copy, and a wrong hull is the kind of
+// bug that only ever shows as a picture looking odd. Checked against the
+// definition rather than against a second implementation: every input point
+// inside or on it, every vertex an input point, every turn to the left.
+{
+  // Local, so the check does not lean on the same helper the code under test uses.
+  const cross = (a: Cell, b: Cell, c: Cell) => (b.i - a.i) * (c.j - a.j) - (b.j - a.j) * (c.i - a.i);
+  let rng = 12345;
+  const rnd = (m: number) => {
+    rng = (rng * 1664525 + 1013904223) >>> 0;
+    return rng % m;
+  };
+  const kk = (p: Cell) => `${p.i},${p.j}`;
+  let convexBad = 0;
+  let degenerateBad = 0;
+  let convexSeen = 0;
+  let degenerateSeen = 0;
+
+  for (let trial = 0; trial < 3000; trial++) {
+    const seen = new Set<string>();
+    const pts: Cell[] = [];
+    for (let t = 0; t < 3 + rnd(6); t++) {
+      const p = { i: rnd(7), j: rnd(7) };
+      if (!seen.has(kk(p))) {
+        seen.add(kk(p));
+        pts.push(p);
+      }
+    }
+    if (pts.length < 3) continue;
+    const h = convexHull(pts);
+    const inputs = new Set(pts.map(kk));
+    if (!h.every((p) => inputs.has(kk(p))) || new Set(h.map(kk)).size !== h.length) {
+      convexBad++;
+      continue;
+    }
+    // Collinear input has no hull, and the contract is to hand it back as it is.
+    const flat = pts.every((p) => cross(pts[0], pts[1], p) === 0);
+    if (flat) {
+      degenerateSeen++;
+      if (h.length !== pts.length) degenerateBad++;
+      continue;
+    }
+    convexSeen++;
+    for (let a = 0; a < h.length; a++) {
+      if (cross(h[a], h[(a + 1) % h.length], h[(a + 2) % h.length]) <= 0) convexBad++;
+    }
+    for (const p of pts) {
+      for (let a = 0; a < h.length; a++) {
+        if (cross(h[a], h[(a + 1) % h.length], p) < 0) convexBad++;
+      }
+    }
+  }
+  check(`convexHull is convex, counter-clockwise and contains its input (${convexSeen} sets)`, convexBad === 0);
+  check(`convexHull returns collinear input unchanged (${degenerateSeen} sets)`, degenerateBad === 0);
+  check("convexHull of two points is those two points", convexHull([{ i: 0, j: 0 }, { i: 2, j: 1 }]).length === 2);
+  check(
+    "convexHull drops a point strictly inside",
+    convexHull([
+      { i: 0, j: 0 },
+      { i: 4, j: 0 },
+      { i: 0, j: 4 },
+      { i: 1, j: 1 },
+    ]).length === 3,
+  );
+}
+
+// ---- hand-drawn patterns, end to end ----
+//
+// patternShape has its own smoke script for the geometry. What is checked here
+// is the part that script cannot see: that a drawn family goes through the same
+// reduction as the built-in ones and comes out with the same answers.
+{
+  const P = (...ps: [number, number][]): LatticePoint[] => ps.map(([i, j]) => ({ i, j }));
+  const drawn = (pts: LatticePoint[], motions: MotionClass): ShapeSpec => ({
+    id: "pattern",
+    allowCollinear: false,
+    axisAligned: false,
+    pattern: { points: normalizePattern(pts), motions },
+  });
+
+  // The headline cross-check: the built-in square family *is* the similar copies
+  // of the unit square, so both routes must agree on the threshold — one through
+  // squares(), one through the Gaussian-integer enumeration.
+  const unitSquare = drawn(P([0, 0], [1, 0], [0, 1], [1, 1]), "similar");
+  for (const n of [3, 4, 5]) {
+    const viaPattern = forcedThreshold(n, unitSquare).answer;
+    const viaBuiltIn = forcedThreshold(n, SQUARE).answer;
+    check(
+      `drawn unit square and the built-in square family agree at N=${n} (k*=${viaBuiltIn})`,
+      viaPattern === viaBuiltIn,
+      `pattern ${viaPattern}, built-in ${viaBuiltIn}`,
+    );
+  }
+
+  // Against exhaustive search, with no solver in the loop on the other side.
+  for (const [pts, motions, n] of [
+    [P([0, 0], [1, 0], [1, 1]), "aligned", 4],
+    [P([0, 0], [1, 0], [1, 1]), "similar", 4],
+    [P([0, 0], [1, 0], [0, 1]), "congruent", 4],
+    [P([0, 0], [1, 0], [2, 0]), "aligned", 5],
+  ] as [LatticePoint[], MotionClass, number][]) {
+    const shape = drawn(pts, motions);
+    const fb = forbiddenSets(n, shape);
+    const alpha = bruteForceMaxAvoiding(n, fb);
+    const got = forcedThreshold(n, shape).answer;
+    check(
+      `drawn ${pts.length}-point/${motions} at N=${n}: k*=${got} matches brute force α=${alpha}`,
+      got === alpha + 1,
+      `solver ${got}, brute force ${alpha + 1}`,
+    );
+  }
+
+  // A shape nothing can be forced into: no copy fits, so every arrangement dodges
+  // it and the family is empty. The page has to recognise this rather than solve.
+  {
+    const tooBig = drawn(P([0, 0], [4, 0], [0, 4]), "congruent");
+    check("a pattern too large for the grid yields an empty family", forbiddenSets(3, tooBig).length === 0);
+  }
+
+  // Width and splitting generalise: a 3-point shape is already 3-CNF, a wider one
+  // is chained into arity−2 clauses through arity−3 fresh variables.
+  {
+    const n = 4;
+    const tri = drawn(P([0, 0], [1, 0], [1, 1]), "aligned");
+    const triF = buildFormula(n, 5, tri, forbiddenSets(n, tri), true);
+    check("a drawn 3-point shape needs no splitting", triF.maxWidth === 3);
+
+    const tet = drawn(P([0, 0], [1, 0], [2, 0], [1, 1]), "aligned");
+    const fbTet = forbiddenSets(n, tet);
+    const raw = buildFormula(n, 5, tet, fbTet, false);
+    const split = buildFormula(n, 5, tet, fbTet, true);
+    check("a drawn 4-point shape is width 4 unsplit", raw.maxWidth === 4);
+    check("splitting it reaches width 3", split.maxWidth === 3);
+    check(
+      "splitting adds arity−3 variables per copy",
+      split.numVars - raw.numVars === fbTet.length * (4 - 3),
+      `${split.numVars - raw.numVars} vs ${fbTet.length}`,
+    );
+    check(
+      "the split formula agrees with the unsplit one on satisfiability",
+      solveCnf(raw.numVars, raw.clauses).status === solveCnf(split.numVars, split.clauses).status,
+    );
+  }
+
+  // Occurrences come back in the pattern's own order, which is what lets a copy
+  // be explained; the readout must survive a non-convex shape without throwing.
+  {
+    const n = 5;
+    const bent = drawn(P([0, 0], [1, 0], [2, 0], [2, 1], [0, 1]), "aligned");
+    const fb = forbiddenSets(n, bent);
+    check("a 5-point drawn shape has copies at N=5", fb.length > 0);
+    const detail = describeOccurrence(n, bent, fb[0]);
+    check("its readout lists one vertex per pattern point", detail.vertices.length === 5);
+    check("its hull is a genuine polygon", detail.hull.length >= 3 && detail.hull.length <= 5);
+    check("its readout names the transform", detail.reason.includes("copy of your pattern"));
+  }
+
+  // Two points are a legitimate shape, and every pair of cells is a similar copy
+  // of one — so the very first pair of dots placed is already a copy.
+  {
+    const n = 4;
+    const pair = drawn(P([0, 0], [1, 0]), "similar");
+    const fb = forbiddenSets(n, pair);
+    check("a 2-point shape has every pair as a copy", fb.length === (16 * 15) / 2);
+    check("findOccurrence does not assume three cells", findOccurrence(new Set([0, 1]), fb) !== null);
+    check("k* for a 2-point similar shape is 2", forcedThreshold(n, pair, { kMin: 1 }).answer === 2);
+  }
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

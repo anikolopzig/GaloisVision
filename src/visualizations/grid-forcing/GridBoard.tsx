@@ -62,7 +62,9 @@ export function GridBoard({ n, selected, detail, safe, showSafe, showLabels, onT
   const highlighted = new Set<number>();
   if (detail) for (const v of detail.vertices) highlighted.add(cellIndex(n, v.i, v.j));
 
-  const polygon = detail ? detail.vertices.map((v) => `${x(v.i)},${y(v.j)}`).join(" ") : "";
+  // The hull, not the vertex order: a hand-drawn pattern need not be convex, and
+  // a polygon through its points in the order they are listed would cross itself.
+  const polygon = detail ? detail.hull.map((v) => `${x(v.i)},${y(v.j)}`).join(" ") : "";
 
   return (
     <svg

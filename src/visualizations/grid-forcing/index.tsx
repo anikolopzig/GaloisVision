@@ -15,24 +15,39 @@ import {
   shapeName,
   type ShapeSpec,
 } from "../../math/gridForcing";
+import {
+  normalizePattern,
+  type MotionClass,
+  type PatternSpec,
+} from "../../math/patternShape";
 import { ArrangementPanel } from "./ArrangementPanel";
 import { Controls } from "./Controls";
 import { GridBoard } from "./GridBoard";
 import { ReductionPanel } from "./ReductionPanel";
 import { SolverPanel } from "./SolverPanel";
-import { PRESETS, clampK, type Preset } from "./limits";
+import { MAX_PATTERN_POINTS, PRESETS, clampK, type PadPreset, type Preset } from "./limits";
 
 type Tab = "explore" | "reduction";
 
 /** Identifies a grid-and-shape pair, for caching what the solver has established about it. */
 function configKey(n: number, shape: ShapeSpec): string {
-  return `${n}|${shape.id}|${shape.allowCollinear ? "c" : ""}${shape.axisAligned ? "a" : ""}`;
+  const base = `${n}|${shape.id}|${shape.allowCollinear ? "c" : ""}${shape.axisAligned ? "a" : ""}`;
+  if (shape.id !== "pattern" || !shape.pattern) return base;
+  // A drawn shape is part of the identity: redraw it and the threshold is a
+  // different question, so the cached answer must not carry over.
+  const pts = shape.pattern.points.map((p) => `${p.i}.${p.j}`).join("_");
+  return `${base}|${shape.pattern.motions}|${pts}`;
 }
 
 export function GridForcingVisualization() {
   const [tab, setTab] = useState<Tab>("explore");
   const [n, setN] = useState(5);
-  const [shape, setShape] = useState<ShapeSpec>(DEFAULT_SHAPE);
+  const [shapeBase, setShapeBase] = useState<ShapeSpec>(DEFAULT_SHAPE);
+  // The pad is held as raw cells rather than a normalised pattern, so that
+  // toggling one does not shift the others out from under the cursor.
+  const [padSize, setPadSize] = useState(2);
+  const [padCells, setPadCells] = useState<ReadonlySet<number>>(() => new Set([0, 2, 3]));
+  const [motions, setMotions] = useState<MotionClass>("similar");
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set<number>());
   const [k, setK] = useState(9);
   const [width3, setWidth3] = useState(true);
@@ -43,6 +58,18 @@ export function GridForcingVisualization() {
   // Thresholds the solver has established, kept per grid-and-shape so switching
   // back and forth does not throw the answer away.
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
+
+  const patternSpec = useMemo<PatternSpec>(
+    () => ({
+      points: normalizePattern([...padCells].map((c) => ({ i: Math.floor(c / padSize), j: c % padSize }))),
+      motions,
+    }),
+    [padCells, padSize, motions],
+  );
+  const shape = useMemo<ShapeSpec>(
+    () => (shapeBase.id === "pattern" ? { ...shapeBase, pattern: patternSpec } : shapeBase),
+    [shapeBase, patternSpec],
+  );
 
   const key = configKey(n, shape);
   const forbidden = useMemo(() => forbiddenSets(n, shape), [n, shape]);
@@ -93,16 +120,51 @@ export function GridForcingVisualization() {
   }
 
   function changeShape(patch: Partial<ShapeSpec>) {
-    const next = { ...shape, ...patch };
-    setShape(next);
+    const nextBase = { ...shapeBase, ...patch };
+    setShapeBase(nextBase);
+    const next = nextBase.id === "pattern" ? { ...nextBase, pattern: patternSpec } : nextBase;
     setK((prev) => clampK(prev, n, next));
+    setShown(0);
+    setPresetNote(null);
+  }
+
+  function togglePad(idx: number) {
+    setPadCells((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else if (next.size < MAX_PATTERN_POINTS) next.add(idx);
+      else return prev;
+      return next;
+    });
+    setShown(0);
+    setPresetNote(null);
+  }
+
+  function changePadSize(next: number) {
+    // Same rule as the board: keep whatever still fits.
+    setPadCells((prev) => {
+      const out = new Set<number>();
+      for (const idx of prev) {
+        const i = Math.floor(idx / padSize);
+        const j = idx % padSize;
+        if (i < next && j < next) out.add(i * next + j);
+      }
+      return out;
+    });
+    setPadSize(next);
+    setShown(0);
+  }
+
+  function applyPadPreset(p: PadPreset) {
+    setPadSize(p.size);
+    setPadCells(new Set(p.cells.map(([i, j]) => i * p.size + j)));
     setShown(0);
     setPresetNote(null);
   }
 
   function applyPreset(p: Preset) {
     setN(p.n);
-    setShape(p.shape);
+    setShapeBase(p.shape);
     setK(clampK(p.k, p.n, p.shape));
     setSelected(new Set((p.cells ?? []).map(([i, j]) => cellIndex(p.n, i, j))));
     setShown(0);
@@ -233,6 +295,18 @@ export function GridForcingVisualization() {
                 onShape={changeShape}
                 onShowSafe={setShowSafe}
                 onShowLabels={setShowLabels}
+                pad={{
+                  size: padSize,
+                  cells: padCells,
+                  motions,
+                  copies: forbidden.length,
+                  boardN: n,
+                  onSize: changePadSize,
+                  onToggle: togglePad,
+                  onClear: () => setPadCells(new Set()),
+                  onMotions: setMotions,
+                  onPreset: applyPadPreset,
+                }}
                 onClear={() => place([])}
                 onFill={() => place(Array.from({ length: n * n }, (_, i) => i))}
                 onShuffle={shuffleDots}

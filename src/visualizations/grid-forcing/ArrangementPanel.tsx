@@ -51,8 +51,7 @@ export function ArrangementPanel({
       ) : placed === 0 ? (
         <div className="msg msg-info">
           <strong>Nothing placed yet.</strong> Click cells on the board, or drag across them, to build an arrangement.
-          The moment three of them make {shape.id === "isosceles" ? "an isosceles triangle" : "a square"}, this panel
-          says so and the copy is drawn in red.
+          The moment some of them form {article} {name}, this panel says so and the copy is drawn in red.
         </div>
       ) : (
         <div className="msg msg-good">
@@ -96,12 +95,19 @@ export function ArrangementPanel({
           <div className="value">{maxAvoiding === null ? "not computed" : maxAvoiding}</div>
         </div>
       </div>
-      {detail && (
-        <p className="section-note">
-          Solid red sides are the ones whose equality makes this a copy; squared lengths are exact integers, which is
-          why no square roots appear anywhere in the check.
-        </p>
-      )}
+      {detail &&
+        (shape.id === "pattern" ? (
+          <p className="section-note">
+            The shaded region is the copy's convex hull — a shape you drew need not be convex, so there is no polygon
+            through its points to draw instead. Which similarity carried your drawing here is named above, as an exact
+            ratio.
+          </p>
+        ) : (
+          <p className="section-note">
+            Solid red sides are the ones whose equality makes this a copy; squared lengths are exact integers, which is
+            why no square roots appear anywhere in the check.
+          </p>
+        ))}
     </div>
   );
 }

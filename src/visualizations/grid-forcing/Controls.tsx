@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ShapeSpec } from "../../math/gridForcing";
+import { PatternPad, type PatternPadProps } from "./PatternPad";
 import { MAX_GRID, MIN_GRID } from "./limits";
 
 type IntFieldProps = {
@@ -84,6 +85,8 @@ type Props = {
   onShowLabels: (v: boolean) => void;
   onClear: () => void;
   onFill: () => void;
+  /** Everything the pattern pad needs; only rendered for a drawn shape. */
+  pad: PatternPadProps;
   onShuffle: () => void;
   /** False when a shuffle could not move anything: an empty or a completely full board. */
   canShuffle: boolean;
@@ -100,6 +103,7 @@ export function Controls({
   onShape,
   onShowSafe,
   onShowLabels,
+  pad,
   onClear,
   onFill,
   onShuffle,
@@ -132,8 +136,23 @@ export function Controls({
         >
           Square
         </button>
+        <button
+          className={`btn secondary${shape.id === "pattern" ? " active" : ""}`}
+          onClick={() => onShape({ id: "pattern" })}
+        >
+          Draw one
+        </button>
       </div>
-      {shape.id === "isosceles" ? (
+      {shape.id === "pattern" ? (
+        <>
+          <p className="section-note" style={{ marginTop: 8 }}>
+            Click cells below to draw a shape of your own. Every copy of it that fits in the grid becomes a forbidden
+            configuration, exactly as the triples and the squares do — the reduction does not care where the family
+            came from.
+          </p>
+          <PatternPad {...pad} />
+        </>
+      ) : shape.id === "isosceles" ? (
         <>
           <p className="section-note" style={{ marginTop: 8 }}>
             Three cells with at least two equal side lengths — an <em>isosceles</em> triangle, in any position and at
@@ -160,9 +179,11 @@ export function Controls({
           />
         </>
       )}
-      <div className="gf-count mono">
-        {configCount.toLocaleString()} {configCount === 1 ? "copy" : "copies"} fit in this grid
-      </div>
+      {shape.id !== "pattern" && (
+        <div className="gf-count mono">
+          {configCount.toLocaleString()} {configCount === 1 ? "copy" : "copies"} fit in this grid
+        </div>
+      )}
 
       <h3 style={{ marginTop: 18 }}>Arrange</h3>
       <div className="gf-buttons">

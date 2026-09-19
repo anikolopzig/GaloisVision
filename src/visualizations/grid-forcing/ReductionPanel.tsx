@@ -2,6 +2,7 @@
 // choice of N, k and shape actually produces.
 
 import { shapeArity, shapeName, type Formula, type ShapeSpec } from "../../math/gridForcing";
+import { motionName } from "../../math/patternShape";
 import { Toggle } from "./Controls";
 import { FormulaView } from "./FormulaView";
 
@@ -34,6 +35,47 @@ const KNOWN: Array<{ label: string; row: Array<number | null>; note: string }> =
   },
 ];
 
+/**
+ * What "a copy" means for a shape someone drew.
+ *
+ * For the built-in families this is a fact about the plane — a triangle either
+ * has two equal sides or it does not. For a drawn pattern it is a *choice*, and
+ * the threshold depends on which choice was made, so the reduction is only
+ * stated honestly if the choice is stated with it.
+ */
+function PatternMembership({ shape }: { shape: ShapeSpec }) {
+  const pts = shape.pattern?.points ?? [];
+  const motions = shape.pattern?.motions ?? "similar";
+
+  return (
+    <>
+      <p className="section-note">
+        Here P = {"{"}
+        {pts.map((p) => `(${p.i},${p.j})`).join(", ")}
+        {"}"}, the pattern you drew, anchored at the origin. Identify Z² with the Gaussian integers by z = p₁ + p₂i. A{" "}
+        <em>copy</em> of P is the image σ(P) of a plane similarity
+      </p>
+      <div className="gf-math mono">σ(z) = αz + β (direct) or σ(z) = αz̄ + β (reflected), α ≠ 0, β ∈ Z[i]</div>
+      <p className="section-note">
+        that lands every point of P back on the grid, with α restricted by the motions you allowed —{" "}
+        <strong>{motionName(motions)}</strong>:
+      </p>
+      <div className="gf-math mono">
+        translation: α = 1, direct only · quarter turns and flips: α ∈ {"{"}1, i, −1, −i{"}"} · same size: |α| = 1 ·
+        any size: α unrestricted
+      </div>
+      <p className="section-note">
+        E is then every σ(P) contained in G<sub>N</sub>, and the rest of the reduction is unchanged: the family is
+        whatever it is, and nothing below this line knows where it came from. Membership stays exact. A similarity is
+        pinned down by the images of two pattern points, so α is carried as a ratio of Gaussian integers and "lands on
+        a lattice point" is the divisibility test α(p − p₀) ∈ Z[i] — a question about integers, true or false with no
+        tolerance to set. Note that the built-in square family is the <em>any size</em> class applied to the unit
+        square: the tilted squares are exactly its similar copies.
+      </p>
+    </>
+  );
+}
+
 export function ReductionPanel({ n, k, shape, formula, forbiddenCount, width3, onWidth3 }: Props) {
   const arity = shapeArity(shape);
   const name = shapeName(shape);
@@ -57,12 +99,14 @@ export function ReductionPanel({ n, k, shape, formula, forbiddenCount, width3, o
           equivalently k*(N) = α(N) + 1, where α(N) is the size of the largest shape-free subset. For the {n}×{n} grid
           and the {name} there are {forbiddenCount.toLocaleString()} configurations in E, each using {arity} cells.
         </p>
-        <p className="section-note">
-          Membership in E is decided by exact integer arithmetic on <em>squared</em> distances: d²(p,q) = (p₁−q₁)² +
-          (p₂−q₂)². A triple is isosceles when two of its three squared distances agree and the three cells are not
-          collinear — collinearity being the 2 × 2 determinant (b₁−a₁)(c₂−a₂) − (b₂−a₂)(c₁−a₁) ≠ 0. No square roots,
-          no floating point, no tolerance.
-        </p>
+        {shape.id === "pattern" ? <PatternMembership shape={shape} /> : (
+          <p className="section-note">
+            Membership in E is decided by exact integer arithmetic on <em>squared</em> distances: d²(p,q) = (p₁−q₁)² +
+            (p₂−q₂)². A triple is isosceles when two of its three squared distances agree and the three cells are not
+            collinear — collinearity being the 2 × 2 determinant (b₁−a₁)(c₂−a₂) − (b₂−a₂)(c₁−a₁) ≠ 0. No square roots,
+            no floating point, no tolerance.
+          </p>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: 18 }}>
@@ -214,23 +258,33 @@ export function ReductionPanel({ n, k, shape, formula, forbiddenCount, width3, o
           <strong>Lemma 6 (size).</strong> M = N² primary variables plus at most kM = O(N⁴) counter variables; |A| = |E|
           and |B| ≤ 2kM + 1 = O(N⁴). For isosceles triangles |E| ≤ C(N², 3) = O(N⁶), enumerable by iterating over all
           triples with an O(1) integer test each. For squares |E| = Σ<sub>s=1..N−1</sub> s(N−s)² = Θ(N⁴), and
-          Σ<sub>s</sub> (N−s)² axis-aligned.
+          Σ<sub>s</sub> (N−s)² axis-aligned. For a drawn pattern |E| ≤ 2M(M−1) = O(N⁴), one candidate per ordered pair
+          of anchor images per orientation, so the family stays polynomial however the pattern is drawn — it is the
+          <em>refutation</em> that gets expensive, never the enumeration.
         </p>
         <p>
-          <strong>Lemma 7 (width).</strong> Clauses of A have exactly as many literals as the shape has corners: 3 for a
-          triangle, 4 for a square. Families 1 and 3 of B have 3, families 2 and 4 have 2, and the assertion is a unit.
-          So triangles land in 3-CNF natively; squares need the standard chain reduction
+          <strong>Lemma 7 (width).</strong> Clauses of A have exactly as many literals as the shape has cells — 3 for a
+          triangle, 4 for a square, {arity} here. Families 1 and 3 of B have 3, families 2 and 4 have 2, and the
+          assertion is a unit. So a width-3 shape lands in 3-CNF natively; anything wider takes the standard chain
+          reduction
         </p>
-        <div className="gf-math mono">(l₁ ∨ l₂ ∨ l₃ ∨ l₄) ⇝ (l₁ ∨ l₂ ∨ z) ∧ (¬z ∨ l₃ ∨ l₄)</div>
+        <div className="gf-math mono">
+          (l₁ ∨ … ∨ l_w) ⇝ (l₁ ∨ l₂ ∨ z₁) ∧ (¬z₁ ∨ l₃ ∨ z₂) ∧ … ∧ (¬z_(w−3) ∨ l_(w−1) ∨ l_w)
+        </div>
         <p>
-          with one fresh variable per square. Equisatisfiable rather than equivalent — which is all that is ever asked
-          of it, since only satisfiability is queried. To reach <em>strict</em> 3-CNF the short clauses pad the same
-          way: (l₁ ∨ l₂) ⇝ (l₁ ∨ l₂ ∨ w)(l₁ ∨ l₂ ∨ ¬w).
+          turning one width-w clause into w−2 width-3 clauses through w−3 fresh variables{" "}
+          {arity > 3 ? `— ${arity - 2} and ${arity - 3} respectively, at ${arity} cells a copy` : ""}. Equisatisfiable
+          rather than equivalent — which is all that is ever asked of it, since only satisfiability is queried. To reach{" "}
+          <em>strict</em> 3-CNF the short clauses pad the same way: (l₁ ∨ l₂) ⇝ (l₁ ∨ l₂ ∨ w)(l₁ ∨ l₂ ∨ ¬w).
         </p>
         <Toggle
-          label="Split width-4 clauses, so the formula really is 3-CNF"
+          label={`Split the width-${Math.max(arity, 4)} clauses, so the formula really is 3-CNF`}
           checked={width3}
-          hint={shape.id === "square" ? `adds ${forbiddenCount.toLocaleString()} variables` : "triangles are already width 3"}
+          hint={
+            arity > 3
+              ? `adds ${(forbiddenCount * (arity - 3)).toLocaleString()} variables`
+              : "this shape is already width 3"
+          }
           onChange={onWidth3}
         />
         <p style={{ marginTop: 18 }}>

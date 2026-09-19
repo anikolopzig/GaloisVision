@@ -195,13 +195,14 @@ Instant, no rebuild needed.
 
 **$0/month, with a hard ceiling.**
 
-The production build is **~429 KB total (~131 KB gzipped over the wire)**, as of the
-grid-forcing page. That page alone — the CDCL SAT solver plus the shape enumerators — is
-about 64 KB of the JavaScript, some 20 KB gzipped; nothing is lazy-loaded, so every visitor
-receives it. The Spark plan includes 10 GB of Hosting storage and 10 GB/month of transfer.
+The production build is **~443 KB total (~136 KB gzipped over the wire)**. The grid-forcing
+page alone — the CDCL SAT solver, the shape enumerators and the hand-drawn-pattern
+enumerator — is about 77 KB of the JavaScript, some 24 KB gzipped; nothing is lazy-loaded,
+so every visitor receives it. The Spark plan includes 10 GB of Hosting storage and
+10 GB/month of transfer.
 
-At roughly 131 KB per first-time visitor (repeat visitors are served from cache), 10 GB of
-monthly transfer works out to something like **75,000 visits per month** before you'd hit
+At roughly 136 KB per first-time visitor (repeat visitors are served from cache), 10 GB of
+monthly transfer works out to something like **74,000 visits per month** before you'd hit
 the limit. For a study-aid site, that isn't a realistic concern.
 
 To re-check these figures after a change, run `npm run build`: it lists each bundled file

@@ -27,9 +27,33 @@ export const MAX_SOLVER_GRID = 8;
  */
 export const MAX_K = 48;
 
+/** The pad the shape is drawn on, in cells to a side. */
+export const MIN_PATTERN_GRID = 2;
+export const MAX_PATTERN_GRID = 6;
+
+/**
+ * Most points a drawn shape may have. Every extra point widens the geometry
+ * clause, and a width-w clause is chained into w−2 clauses through w−3 fresh
+ * variables, so the encoding grows with it — but the real reason for a cap is
+ * that sparse shapes have few copies, which pushes k* toward N² and the counter
+ * with it.
+ */
+export const MAX_PATTERN_POINTS = 8;
+
+/**
+ * There is deliberately no cap on the number of copies, because none is needed.
+ * A copy is named by an ordered pair of anchor images and an orientation, so the
+ * family holds at most 2M(M−1) members — 8 064 at the solver's N = 8 ceiling,
+ * 19 800 at the largest grid the board will draw. Even the worst of those is a
+ * smaller geometry block than the isosceles family already carries. What makes a
+ * drawn shape expensive is never the size of the instance; it is how long the
+ * refutation takes, which no count can predict. That is what the conflict budget
+ * and the cancel button are for.
+ */
+
 /** Fewer cells than the shape has corners cannot contain a copy of it. */
 export function minK(shape: ShapeSpec): number {
-  return shapeArity(shape);
+  return Math.max(1, shapeArity(shape));
 }
 
 export function maxK(n: number): number {
@@ -51,7 +75,7 @@ export const CONFLICT_BUDGET = 1_200_000;
 export const SLICE_CONFLICTS = 120;
 export const SLICE_MS = 24;
 
-export type DifficultyLevel = "instant" | "quick" | "slow" | "outOfReach";
+export type DifficultyLevel = "instant" | "quick" | "slow" | "unknown" | "outOfReach";
 
 export type Difficulty = {
   level: DifficultyLevel;
@@ -65,7 +89,8 @@ export type Difficulty = {
  * solver only has to *find* an arrangement, which is easy, and well above it
  * the formula is so over-constrained that it collapses at once.
  */
-export function solverDifficulty(n: number, shape: ShapeSpec): Difficulty {
+export function solverDifficulty(n: number, shape: ShapeSpec, evidence?: PatternEvidence): Difficulty {
+  if (shape.id === "pattern") return patternDifficulty(n, shape, evidence);
   if (n > MAX_SOLVER_GRID) {
     return {
       level: "outOfReach",
@@ -108,15 +133,104 @@ export function solverDifficulty(n: number, shape: ShapeSpec): Difficulty {
   };
 }
 
-/** Whether an upward scan for k* is offered: it has to pass through the hardest k there is. */
-export function canScan(n: number, shape: ShapeSpec): boolean {
-  return solverDifficulty(n, shape).level !== "outOfReach";
+/**
+ * What is known about a drawn shape before any solving happens: how many copies
+ * fit, and the size of a shape-free set greedy search has already *verified*.
+ * Both are cheap, and between them they decide the two questions that cannot be
+ * answered by a measured table — whether there is anything to force, and whether
+ * the answer is out past the k this page will build a counter for.
+ */
+export type PatternEvidence = { copies: number; greedy: number };
+
+/**
+ * A drawn shape has no measured timing to quote, and guessing one would be
+ * dressing a hunch up as a fact. What can be said for certain is said, and the
+ * rest is left to the conflict budget and the cancel button.
+ */
+function patternDifficulty(n: number, shape: ShapeSpec, evidence?: PatternEvidence): Difficulty {
+  const points = shape.pattern?.points.length ?? 0;
+  if (points < 2) {
+    return {
+      level: "outOfReach",
+      label: "nothing drawn yet",
+      note: "Click at least two cells on the pad to define a shape.",
+    };
+  }
+  if (evidence && evidence.copies === 0) {
+    return {
+      level: "outOfReach",
+      label: "no copies fit",
+      note: `Not one copy of this shape fits in the ${n}×${n} grid under this reading of "the same shape", so no number of dots can force one. Enlarge the grid, or allow more motions.`,
+    };
+  }
+  if (n > MAX_SOLVER_GRID) {
+    return {
+      level: "outOfReach",
+      label: "out of reach",
+      note: `The solver is offered up to the ${MAX_SOLVER_GRID}×${MAX_SOLVER_GRID} grid. You can still draw here and check arrangements by hand.`,
+    };
+  }
+  if (evidence && evidence.greedy >= maxK(n)) {
+    return {
+      level: "outOfReach",
+      label: "threshold is past the k cap",
+      note: `Greedy search has already placed ${evidence.greedy} dots here without making a copy — verified directly, no solver involved — so k* is at least ${evidence.greedy + 1}, above the ${maxK(n)} this page will build a counter for. A larger grid will not help; a shape with more copies in it will.`,
+    };
+  }
+  // Measured across a sample of drawn shapes (L-tromino, T-tetromino, three in a
+  // row, right triangle, unit square, a 1–2 scalene triangle) at N = 5…7. The
+  // pattern in the numbers is the motion class, not the shape: allowing scaling
+  // multiplies the copies and the cost with them, while the other three classes
+  // stayed in the tens of milliseconds throughout. A tendency, not a promise —
+  // hence a warning rather than a locked door.
+  if ((shape.pattern?.motions ?? "similar") === "similar" && n >= 7) {
+    return {
+      level: "slow",
+      label: "expect a wait",
+      note: `Under "any size, any angle" the ${n}×${n} grid measured anywhere from a few seconds to past the budget, because allowing scaling multiplies the number of copies. The other three motion classes stayed under a tenth of a second at this size. It is cancellable throughout, and an exhausted budget is reported rather than guessed at.`,
+    };
+  }
+  return {
+    level: "unknown",
+    label: "not measured",
+    note: 'Unlike the two built-in families, a shape you drew has no timing measured ahead of it — the cost is the shape\u2019s own. For what it is worth, across a sample of drawn shapes the quarter-turns, sliding and same-size classes all finished in well under a second up to N = 7; allowing any size is the expensive one. It runs under the same conflict budget as everything else and can be cancelled at any point, and if the budget runs out the page says so rather than guessing.',
+  };
 }
 
-/** Whether a single k may be decided. Off the threshold the formula is easy, so this is the looser gate. */
-export function canDecide(n: number): boolean {
-  return n <= MAX_SOLVER_GRID;
+/** Whether an upward scan for k* is offered: it has to pass through the hardest k there is. */
+export function canScan(n: number, shape: ShapeSpec, evidence?: PatternEvidence): boolean {
+  return solverDifficulty(n, shape, evidence).level !== "outOfReach";
 }
+
+/**
+ * Whether a single k may be decided. Away from the threshold the formula is
+ * easy, so this is the looser gate — in particular a shape whose k* is past the
+ * cap can still be asked about any k below it.
+ */
+export function canDecide(n: number, shape?: ShapeSpec, evidence?: PatternEvidence): boolean {
+  if (n > MAX_SOLVER_GRID) return false;
+  if (shape?.id !== "pattern") return true;
+  if ((shape.pattern?.points.length ?? 0) < 2) return false;
+  if (!evidence) return true;
+  return evidence.copies > 0;
+}
+
+export type PadPreset = { label: string; size: number; cells: [number, number][] };
+
+/**
+ * Shapes worth starting the pad from. Two of them are deliberate overlaps with
+ * the built-in families — the unit square under "any size" reproduces the whole
+ * square family, and the right triangle is a slice of the isosceles one — so the
+ * drawn route can be checked against an answer the page already knows.
+ */
+export const PAD_PRESETS: PadPreset[] = [
+  { label: "Right triangle", size: 2, cells: [[0, 0], [1, 0], [0, 1]] },
+  { label: "L-tromino", size: 2, cells: [[0, 0], [1, 0], [1, 1]] },
+  { label: "Three in a row", size: 3, cells: [[0, 0], [1, 0], [2, 0]] },
+  { label: "Unit square", size: 2, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+  { label: "T-tetromino", size: 3, cells: [[0, 0], [1, 0], [2, 0], [1, 1]] },
+  { label: "3–4–5 triangle", size: 5, cells: [[0, 0], [3, 0], [0, 4]] },
+];
 
 export type Preset = {
   label: string;

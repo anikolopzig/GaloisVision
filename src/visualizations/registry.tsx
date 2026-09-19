@@ -53,7 +53,7 @@ export const visualizations: Visualization[] = [
     id: "grid-forcing",
     title: "Forcing a shape on a grid",
     description:
-      "Place dots on an N × N grid and see at once whether some of them form an isosceles triangle or a square; then have a SAT solver compute the smallest number of dots that makes the shape unavoidable, and read the reduction that turns the question into 3-SAT.",
+      "Place dots on an N × N grid and see at once whether some of them form an isosceles triangle, a square, or a shape you drew yourself; then have a SAT solver compute the smallest number of dots that makes it unavoidable, and read the reduction that turns the question into 3-SAT.",
     status: "ready",
     Component: GridForcingVisualization,
   },

@@ -32,7 +32,11 @@ export function FormulaView({ formula, forbiddenCount }: { formula: Formula; for
   }
 
   const { n, k } = formula;
-  const dimacsName = `grid-${n}x${n}-${formula.shape.id}${formula.shape.axisAligned ? "-axis" : ""}-k${k}.cnf`;
+  const shapeTag =
+    formula.shape.id === "pattern"
+      ? `pattern${formula.shape.pattern?.points.length ?? 0}-${formula.shape.pattern?.motions ?? "similar"}`
+      : `${formula.shape.id}${formula.shape.axisAligned ? "-axis" : ""}`;
+  const dimacsName = `grid-${n}x${n}-${shapeTag}-k${k}.cnf`;
 
   return (
     <div className="card">

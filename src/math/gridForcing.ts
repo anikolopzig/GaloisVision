@@ -34,12 +34,18 @@
 // roots, no floating point, no tolerance parameter. Framework-free: this module
 // imports only the SAT solver.
 
+import {
+  copyTransform,
+  patternCopies,
+  scale2Text,
+  type PatternSpec,
+} from "./patternShape";
 import { SatSolver, type SatStats } from "./sat";
 
 /** A grid cell. Both coordinates run over 0 … N−1; i is the column, j the row. */
 export type Cell = { i: number; j: number };
 
-export type ShapeId = "isosceles" | "square";
+export type ShapeId = "isosceles" | "square" | "pattern";
 
 export type ShapeSpec = {
   id: ShapeId;
@@ -51,6 +57,12 @@ export type ShapeSpec = {
   allowCollinear: boolean;
   /** Square only: restrict to squares with sides parallel to the axes. */
   axisAligned: boolean;
+  /**
+   * Pattern only: the cells drawn on the pad, together with what counts as a
+   * copy of them. Absent for the two built-in families, which are whole
+   * similarity classes rather than one drawing.
+   */
+  pattern?: PatternSpec;
 };
 
 export const DEFAULT_SHAPE: ShapeSpec = { id: "isosceles", allowCollinear: false, axisAligned: false };
@@ -155,6 +167,12 @@ export function squares(n: number, axisAligned = false): Occurrence[] {
 /** The forbidden family the reduction forbids, for this grid and shape. */
 export function forbiddenSets(n: number, shape: ShapeSpec): Occurrence[] {
   if (n < 2) return [];
+  if (shape.id === "pattern") {
+    // The cells stay in the pattern's own order rather than ascending, which is
+    // what lets a copy be explained afterwards. Nothing downstream — the clause
+    // builder, the greedy search, the occurrence scan — depends on the order.
+    return shape.pattern ? patternCopies(n, shape.pattern).map((c) => c.cells) : [];
+  }
   return shape.id === "isosceles"
     ? isoscelesTriples(n, shape.allowCollinear)
     : squares(n, shape.axisAligned);
@@ -162,6 +180,7 @@ export function forbiddenSets(n: number, shape: ShapeSpec): Occurrence[] {
 
 /** How many cells one copy of the shape uses: 3 for a triangle, 4 for a square. */
 export function shapeArity(shape: ShapeSpec): number {
+  if (shape.id === "pattern") return shape.pattern?.points.length ?? 0;
   return shape.id === "isosceles" ? 3 : 4;
 }
 
@@ -171,6 +190,9 @@ export function shapeArticle(shape: ShapeSpec): string {
 }
 
 export function shapeName(shape: ShapeSpec): string {
+  if (shape.id === "pattern") {
+    return `${shape.pattern?.points.length ?? 0}-point pattern`;
+  }
   if (shape.id === "isosceles") {
     return shape.allowCollinear ? "isosceles triple (collinear allowed)" : "isosceles triangle";
   }
@@ -191,6 +213,28 @@ export function convexOrder(pts: readonly Cell[]): Cell[] {
   return [...pts].sort((p, q) => Math.atan2(p.j - cy, p.i - cx) - Math.atan2(q.j - cy, q.i - cx));
 }
 
+/**
+ * The convex hull in counter-clockwise order, by Andrew's monotone chain. Exact:
+ * the turn test is the same integer cross product used everywhere else here, so
+ * a point on a hull edge is decided rather than estimated. Degenerate input — two
+ * points, or a collinear run — has no hull, and comes back unchanged.
+ */
+export function convexHull(pts: readonly Cell[]): Cell[] {
+  if (pts.length < 3) return [...pts];
+  const sorted = [...pts].sort((a, b) => a.i - b.i || a.j - b.j);
+  const half = (input: readonly Cell[]): Cell[] => {
+    const out: Cell[] = [];
+    for (const p of input) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  const hull = [...half(sorted), ...half([...sorted].reverse())];
+  return hull.length >= 3 ? hull : [...sorted];
+}
+
 export type OccurrenceEdge = {
   from: Cell;
   to: Cell;
@@ -203,6 +247,13 @@ export type OccurrenceEdge = {
 export type OccurrenceDetail = {
   vertices: Cell[];
   edges: OccurrenceEdge[];
+  /**
+   * The copy's convex hull in cyclic order — the region the board shades. It
+   * equals `vertices` for the built-in shapes, which are convex by
+   * construction. A hand-drawn pattern need not be, and a polygon through its
+   * points in any order would cross itself.
+   */
+  hull: Cell[];
   /** One line of plain English saying why these cells are a copy of the shape. */
   reason: string;
 };
@@ -214,6 +265,7 @@ export type OccurrenceDetail = {
  * rather than merely flagging the failure.
  */
 export function describeOccurrence(n: number, shape: ShapeSpec, occurrence: Occurrence): OccurrenceDetail {
+  if (shape.id === "pattern") return describePatternCopy(n, shape, occurrence);
   const vertices = convexOrder(occurrence.map((p) => cellAt(n, p)));
   const edges: OccurrenceEdge[] = vertices.map((v, idx) => {
     const w = vertices[(idx + 1) % vertices.length];
@@ -226,6 +278,7 @@ export function describeOccurrence(n: number, shape: ShapeSpec, occurrence: Occu
     return {
       vertices,
       edges,
+      hull: vertices,
       reason: `four equal sides of squared length ${side2} meeting at right angles`,
     };
   }
@@ -252,14 +305,54 @@ export function describeOccurrence(n: number, shape: ShapeSpec, occurrence: Occu
     : count === 3
       ? `all three sides of squared length ${repeated}: equilateral, so certainly isosceles`
       : `two sides of equal squared length ${repeated}`;
-  return { vertices, edges, reason };
+  return { vertices, edges, hull: vertices, reason };
+}
+
+/**
+ * A copy of a hand-drawn pattern.
+ *
+ * There are no distinguished sides to name here — the pattern is whatever was
+ * clicked, so no two of its lengths need be equal and nothing about it is what
+ * "makes" a copy a copy. What is worth saying instead is which similarity
+ * carried the drawing onto these cells: how much it grew or shrank, and whether
+ * it was turned over. Both come back exactly, as a ratio of integers.
+ */
+function describePatternCopy(n: number, shape: ShapeSpec, occurrence: Occurrence): OccurrenceDetail {
+  // Not reordered: the cells arrive in the pattern's own order, which is the
+  // correspondence the transform is read from.
+  const vertices = occurrence.map((p) => cellAt(n, p));
+  const hull = convexHull(vertices);
+  const edges: OccurrenceEdge[] = [];
+  if (hull.length === 2) {
+    edges.push({ from: hull[0], to: hull[1], length2: d2(hull[0], hull[1]), witnessing: false });
+  } else if (hull.length >= 3) {
+    for (let idx = 0; idx < hull.length; idx++) {
+      const v = hull[idx];
+      const w = hull[(idx + 1) % hull.length];
+      edges.push({ from: v, to: w, length2: d2(v, w), witnessing: false });
+    }
+  }
+
+  const t = shape.pattern ? copyTransform(n, shape.pattern, occurrence) : null;
+  if (!t) return { vertices, edges, hull, reason: "a copy of the pattern you drew" };
+  const size =
+    t.scale2.num === t.scale2.den
+      ? "at the size you drew it"
+      : `with every squared distance multiplied by ${scale2Text(t.scale2)}`;
+  return {
+    vertices,
+    edges,
+    hull,
+    reason: `a copy of your pattern ${size}${t.reflected ? ", mirrored" : ""}`,
+  };
 }
 
 // ---------------------------------------------------- checking a drawing --
 
 /** The first copy of the shape sitting inside `selected`, or null if it is shape-free. */
 export function findOccurrence(selected: ReadonlySet<number>, forbidden: readonly Occurrence[]): Occurrence | null {
-  if (selected.size < 3) return null;
+  // Not "< 3": a hand-drawn pattern may have as few as two points.
+  if (selected.size === 0) return null;
   for (const s of forbidden) {
     let all = true;
     for (const p of s) {
@@ -280,7 +373,7 @@ export function findOccurrences(
   limit = 2000,
 ): Occurrence[] {
   const out: Occurrence[] = [];
-  if (selected.size < 3) return out;
+  if (selected.size === 0) return out;
   for (const s of forbidden) {
     let all = true;
     for (const p of s) {
@@ -526,14 +619,16 @@ export function buildFormula(
     }
     group++;
   }
-  const split = width3 && forbidden.length > 0 && forbidden[0].length > 3;
+  const arity = forbidden.length > 0 ? forbidden[0].length : 0;
+  const split = width3 && arity > 3;
   mark(
     "geometry",
     "Geometry",
     `One clause per copy of the ${shapeName(shape)} in the grid, saying its cells are not all chosen. ` +
       `De Morgan turns ¬(x_a ∧ x_b ∧ …) into a disjunction of negative literals for free — no Tseitin encoding is needed anywhere.` +
       (split
-        ? ` Each of the ${forbidden.length} copies has four corners, so its width-4 clause is split into two width-3 clauses sharing one fresh variable.`
+        ? ` Each of the ${forbidden.length} copies uses ${arity} cells, so its width-${arity} clause is chained into ` +
+          `${arity - 2} width-3 clauses through ${arity - 3} fresh ${arity === 4 ? "variable" : "variables"}.`
         : ""),
     geoStart,
   );
